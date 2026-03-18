@@ -53,7 +53,7 @@ All tests run on https://vilin97-verideepresearch.hf.space on 2026-03-18.
 
 | # | Question | Time | Result | Notes |
 |---|----------|------|--------|-------|
-| 23 | "Group of order pq with p∤(q-1) is cyclic." | >15min | Timeout | Fast path failed. Submitted to Aristotle, queue backed up. |
+| 23 | "Group of order pq with p∤(q-1) is cyclic." | >15min | Timeout* | Fast path verified on 2nd attempt (1m09s) but agent continued waiting for Aristotle. Aristotle queue backed up. *Agent got verified code but didn't finalize. |
 | 24 | "Schur's inequality for t=1." | >15min | Timeout | Submitted 2 Aristotle jobs. (Aristotle later completed these.) |
 | 25 | FATE-X #5: "Maximal normal abelian subgroup of p-group." | >15min | Timeout | Submitted 2 Aristotle jobs. |
 | 26 | FATE-X #10: "R[X,Y]/(X²+Y²+1) is a PID." | >30min | Timeout | Submitted 3 Aristotle jobs. Agent decomposed correctly. |
