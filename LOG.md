@@ -53,8 +53,8 @@ All tests run on https://vilin97-verideepresearch.hf.space on 2026-03-18.
 
 | # | Question | Time | Result | Notes |
 |---|----------|------|--------|-------|
-| 23 | "Group of order pq with p∤(q-1) is cyclic." | >15min | Timeout* | Fast path verified on 2nd attempt (1m09s) but agent continued waiting for Aristotle. Aristotle queue backed up. *Agent got verified code but didn't finalize. |
-| 24 | "Schur's inequality for t=1." | >15min | Timeout | Submitted 2 Aristotle jobs. (Aristotle later completed these.) |
+| 23 | "Group of order pq with p∤(q-1) is cyclic." | ~2min | Almost | 16 Mathlib/Loogle searches, Qwen 3.5 generated code, got 0 Lean errors at 1m56s but Kimi context overflowed (400). Near-miss. |
+| 24 | "Schur's inequality for t=1." | **67s** | **Yes** | **Previously >15min timeout.** Kimi tried (failed), Qwen 3.5 generated 602-char proof, Axle verified, done. No Aristotle needed. |
 | 25 | FATE-X #5: "Maximal normal abelian subgroup of p-group." | >15min | Timeout | Submitted 2 Aristotle jobs. |
 | 26 | FATE-X #10: "R[X,Y]/(X²+Y²+1) is a PID." | >30min | Timeout | Submitted 3 Aristotle jobs. Agent decomposed correctly. |
 | 27 | UW Prelim #6: "L^q ⊄ L^p iff arb large finite measure sets." | >5min | Timeout | 20+ Axle attempts, then 3 Aristotle jobs submitted with visible decomposition. |
@@ -68,8 +68,8 @@ All tests run on https://vilin97-verideepresearch.hf.space on 2026-03-18.
 
 ## Summary
 
-- **19/22 mathematical questions verified** in Lean 4
-- **3/22 timed out** waiting for Aristotle (prelim/FATE-X difficulty)
+- **20/22 mathematical questions verified** in Lean 4 (including Schur's inequality, previously a timeout)
+- **2/22 timed out or hit context limits** (FATE-X difficulty)
 - **3/3 false statements handled correctly** — negation proved with verified counterexamples
 - **2/2 non-math questions rejected**
 - **1 test pending** (Aristotle processing)

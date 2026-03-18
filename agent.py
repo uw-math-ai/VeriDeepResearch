@@ -55,24 +55,22 @@ Do NOT just refuse — always try to prove the negation. This is the most valuab
 Try to prove the result using one or more of:
 - Write Lean 4 code yourself and verify with **check_lean_code** (Axle — takes seconds).
 - Use **generate_lean_proof** to have Qwen 3.5 write the proof, then verify with check_lean_code.
-- If verified: great, call **final_answer** immediately.
-- If errors: try to fix and re-check (up to 3 attempts).
+- **CRITICAL: If check_lean_code returns okay=true, IMMEDIATELY call final_answer. Do not wait for Aristotle or do any more work.**
+- If errors: try to fix and re-check. Alternate between writing code yourself and using generate_lean_proof.
 - If the statement seems false: try proving the NEGATION instead.
 
-### Phase 3: Aristotle (if fast attempt fails or problem is complex)
-If Axle verification fails after a few attempts, use Aristotle:
-1. **Decompose** the problem into the main result + 3-5 sub-lemmas.
-2. **Submit ALL** to Aristotle (call submit_to_aristotle for each):
-   - The main result as a natural language prompt
-   - Each sub-lemma as a separate prompt
-   - Optionally, Lean code with sorry: "Fill in the sorries:\\n```lean\\nimport Mathlib\\ntheorem foo : ... := by sorry\\n```"
-3. **Continue working** — do NOT call wait_for_aristotle immediately. Instead:
-   - Search for more theorems and Mathlib declarations
-   - Try different Lean formulations
-   - Periodically call **check_aristotle_status** to see progress
-4. **Collect results** when ready: use **wait_for_aristotle** or **get_aristotle_result** (if status is COMPLETE).
-5. **Verify** Aristotle's output with check_lean_code.
-6. **Assemble** the best verified pieces into a single file.
+### Phase 3: Aristotle + active proving (if fast attempt fails)
+If Axle verification fails after several attempts:
+1. **Submit to Aristotle** — decompose into main result + sub-lemmas, submit ALL.
+2. **DO NOT WAIT for Aristotle.** Instead, keep actively trying to close the proof yourself:
+   - Use **generate_lean_proof** (Qwen 3.5) with different prompts and hints.
+   - Search for more Mathlib declarations with search_lean_library and search_loogle.
+   - Write Lean code yourself with different proof strategies.
+   - Verify each attempt with check_lean_code.
+   - **If ANY attempt verifies (okay=true), IMMEDIATELY call final_answer. Do not wait for Aristotle.**
+3. **Periodically check Aristotle** with check_aristotle_status — but only between your own proof attempts, never as the primary activity.
+4. If Aristotle completes, download with get_aristotle_result and verify with check_lean_code.
+5. The goal is to RACE: you and Qwen try to prove it while Aristotle also works on it. Whoever finishes first wins.
 
 ### Phase 4: Final answer
 Call **final_answer** with:
@@ -81,11 +79,11 @@ Call **final_answer** with:
 - Whether verification succeeded
 
 ## Key principles
-- Try the FAST PATH first (your own code + Axle).
-- Use Aristotle for anything that doesn't verify quickly.
-- Submit MULTIPLE Aristotle jobs with different approaches.
-- Don't sit idle while Aristotle works — keep researching.
-- Always verify with check_lean_code before calling final_answer.
+- **NEVER sit idle.** Always be actively trying to prove the result.
+- If check_lean_code says okay=true, IMMEDIATELY call final_answer. This is the highest priority.
+- Use BOTH your own code AND generate_lean_proof (Qwen 3.5) — try different approaches.
+- Submit to Aristotle early, but don't wait for it — keep proving.
+- Race: you + Qwen vs Aristotle. First verified proof wins.
 - For false statements, PROVE THE NEGATION — don't just refuse.
 """
 
