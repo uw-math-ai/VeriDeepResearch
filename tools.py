@@ -12,6 +12,8 @@ from config import (
     AXLE_BASE_URL,
     LEAN_ENVIRONMENT,
     ARISTOTLE_API_KEY,
+    TOKEN_FACTORY_API_KEY,
+    TOKEN_FACTORY_BASE_URL,
 )
 
 
@@ -71,6 +73,37 @@ async def search_lean_library(query: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Loogle (type-based Mathlib search)
+# ---------------------------------------------------------------------------
+
+async def search_loogle(query: str) -> str:
+    """Search Mathlib by type signature pattern via Loogle."""
+    try:
+        async with httpx.AsyncClient(timeout=30) as client:
+            response = await client.get(
+                "https://loogle.lean-lang.org/json",
+                params={"q": query},
+            )
+            if response.status_code != 200:
+                return json.dumps({"error": f"Loogle unavailable (HTTP {response.status_code})"})
+            data = response.json()
+            if "error" in data:
+                return json.dumps({"error": data["error"], "suggestions": data.get("suggestions", [])})
+            hits = data.get("hits", [])[:10]
+            results = []
+            for h in hits:
+                results.append({
+                    "name": h.get("name", ""),
+                    "type": h.get("type", ""),
+                    "module": h.get("module", ""),
+                    "doc": (h.get("doc") or "")[:200],
+                })
+            return json.dumps({"count": data.get("count", 0), "results": results}, indent=2)
+    except Exception as e:
+        return json.dumps({"error": f"Loogle error: {e}"})
+
+
+# ---------------------------------------------------------------------------
 # Axle (Lean verification)
 # ---------------------------------------------------------------------------
 
@@ -103,6 +136,61 @@ async def check_lean_code(code: str) -> str:
             }, indent=2)
     except Exception as e:
         return json.dumps({"error": f"Axle error: {e}"})
+
+
+# ---------------------------------------------------------------------------
+# Qwen 3.5 (Lean proof generation)
+# ---------------------------------------------------------------------------
+
+QWEN_MODEL = "Qwen/Qwen3.5-397B-A17B"
+QWEN_LEAN_SYSTEM = """\
+You are a Lean 4 proof assistant. You write correct Lean 4 code with Mathlib.
+Given a mathematical statement, produce a COMPLETE Lean 4 file that proves it.
+Rules:
+- Start with `import Mathlib`
+- Use Lean 4 syntax (NOT Lean 3)
+- The code must compile with Lean 4.28.0 and current Mathlib
+- Use tactics like simp, ring, omega, norm_num, linarith, exact?, apply? where appropriate
+- Output ONLY the Lean code, no explanations
+"""
+
+
+async def generate_lean_proof(statement: str, context: str = "") -> str:
+    """Use Qwen 3.5 to generate Lean 4 proof code."""
+    from openai import AsyncOpenAI
+
+    client = AsyncOpenAI(
+        base_url=TOKEN_FACTORY_BASE_URL,
+        api_key=TOKEN_FACTORY_API_KEY,
+    )
+    try:
+        prompt = f"Write a Lean 4 proof for:\n{statement}"
+        if context:
+            prompt += f"\n\nContext (relevant Mathlib declarations):\n{context}"
+
+        response = await client.chat.completions.create(
+            model=QWEN_MODEL,
+            messages=[
+                {"role": "system", "content": QWEN_LEAN_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.6,
+            max_tokens=8192,
+        )
+        content = response.choices[0].message.content or ""
+        # Extract lean code from markdown code block if present
+        if "```lean" in content:
+            start = content.find("```lean")
+            end = content.find("```", start + 6)
+            if end > start:
+                code = content[start:end]
+                # Remove the ```lean prefix
+                code = code.split("\n", 1)[1] if "\n" in code else code[7:]
+                return code.strip()
+        # If no code block, return as-is (might be raw lean code)
+        return content.strip()
+    except Exception as e:
+        return f"Qwen error: {e}"
 
 
 # ---------------------------------------------------------------------------
@@ -224,6 +312,57 @@ TOOL_DEFINITIONS = [
                     }
                 },
                 "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_loogle",
+            "description": (
+                "Search Mathlib by TYPE SIGNATURE pattern using Loogle. "
+                "Use this to find lemmas by their type shape. Examples:\n"
+                "- 'List.map' (by name)\n"
+                "- 'Nat -> Nat -> Nat' (by type)\n"
+                "- '_ + _ = _ + _' (by pattern)\n"
+                "- 'List.map (_ ∘ _) _ = _' (mixed)\n"
+                "Returns declaration names, types, and modules."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Loogle query — a name, type pattern, or expression pattern",
+                    }
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_lean_proof",
+            "description": (
+                "Use Qwen 3.5 (a 397B-parameter LLM specialized in code) to generate "
+                "Lean 4 proof code. Give it the mathematical statement and optionally "
+                "relevant Mathlib context. Returns Lean code that you should then verify "
+                "with check_lean_code. Use this as an alternative to writing proofs yourself."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "statement": {
+                        "type": "string",
+                        "description": "The mathematical statement to prove, in natural language or Lean-like notation.",
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Optional: relevant Mathlib declarations, search results, or hints.",
+                    },
+                },
+                "required": ["statement"],
             },
         },
     },

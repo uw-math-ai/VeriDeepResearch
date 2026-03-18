@@ -17,7 +17,9 @@ from config import (
 from tools import (
     search_theorems,
     search_lean_library,
+    search_loogle,
     check_lean_code,
+    generate_lean_proof,
     submit_to_aristotle,
     check_aristotle_status,
     get_aristotle_result,
@@ -45,11 +47,14 @@ Do NOT just refuse — always try to prove the negation. This is the most valuab
 ## Workflow
 
 ### Phase 1: Research
-1. Search for relevant theorems with **search_theorems**.
-2. Search Mathlib for relevant declarations with **search_lean_library**.
+1. Search for relevant theorems with **search_theorems** (arXiv, natural language).
+2. Search Mathlib with **search_lean_library** (by name or natural language).
+3. Search Mathlib by type pattern with **search_loogle** (e.g. "_ + _ = _ + _", "Nat → Nat → Prop").
 
 ### Phase 2: Fast attempt (try this first)
-Using your research, write Lean 4 code and verify with **check_lean_code** (Axle — takes seconds).
+Try to prove the result using one or more of:
+- Write Lean 4 code yourself and verify with **check_lean_code** (Axle — takes seconds).
+- Use **generate_lean_proof** to have Qwen 3.5 write the proof, then verify with check_lean_code.
 - If verified: great, call **final_answer** immediately.
 - If errors: try to fix and re-check (up to 3 attempts).
 - If the statement seems false: try proving the NEGATION instead.
@@ -283,6 +288,19 @@ async def _handle_tool_call(fn_name: str, fn_args: dict,
         query = fn_args.get("query", "")
         add_status(f'Searching Mathlib: "{query}"...')
         return await search_lean_library(query)
+
+    if fn_name == "search_loogle":
+        query = fn_args.get("query", "")
+        add_status(f'Searching Loogle: "{query}"...')
+        return await search_loogle(query)
+
+    if fn_name == "generate_lean_proof":
+        statement = fn_args.get("statement", "")
+        short_stmt = statement[:80].replace("\n", " ")
+        add_status(f'Generating proof with Qwen 3.5: "{short_stmt}"...')
+        result = await generate_lean_proof(statement, fn_args.get("context", ""))
+        add_status(f"Qwen 3.5 generated {len(result)} chars of Lean code")
+        return result
 
     if fn_name == "check_lean_code":
         add_status("Verifying Lean code with Axle...")
