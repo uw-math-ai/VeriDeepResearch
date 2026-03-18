@@ -112,6 +112,45 @@ class CostTracker:
         return f"${self.total_cost:.4f} ({self.total_input_tokens} in / {self.total_output_tokens} out)"
 
 
+MAX_TOOL_RESULT_CHARS = 3000  # Truncate tool results beyond this
+MAX_KEEP_RECENT = 30          # Keep last N messages uncompressed
+
+
+def _compress_messages(messages: list[dict]) -> list[dict]:
+    """Compress conversation to fit within context limits.
+
+    Strategy:
+    - Always keep system message (index 0) and user message (index 1).
+    - Keep the last MAX_KEEP_RECENT messages as-is.
+    - For older messages: truncate tool result contents to save space.
+    """
+    if len(messages) <= MAX_KEEP_RECENT + 2:
+        return messages
+
+    # System + user are always kept
+    head = messages[:2]
+    # Recent messages kept as-is
+    recent = messages[-MAX_KEEP_RECENT:]
+    # Middle messages: compress tool results
+    middle = messages[2:-MAX_KEEP_RECENT]
+
+    compressed = []
+    for msg in middle:
+        if msg.get("role") == "tool":
+            content = msg.get("content", "")
+            if len(content) > MAX_TOOL_RESULT_CHARS:
+                msg = dict(msg)
+                msg["content"] = content[:MAX_TOOL_RESULT_CHARS] + "\n... [truncated]"
+            compressed.append(msg)
+        elif msg.get("role") == "assistant" and not msg.get("tool_calls"):
+            # Skip pure-thinking assistant messages to save space
+            continue
+        else:
+            compressed.append(msg)
+
+    return head + compressed + recent
+
+
 TERMINAL_STATUSES = {
     "COMPLETE", "COMPLETE_WITH_ERRORS", "FAILED",
     "CANCELED", "OUT_OF_BUDGET",
@@ -149,6 +188,10 @@ async def run_agent(question: str):
             add_status(f"Budget limit reached ({cost_tracker.summary()}).")
             yield render_status(), None
             break
+
+        # Compress context to avoid overflowing the LLM's context window.
+        # Keep system + user + last 30 messages; summarize older tool results.
+        messages = _compress_messages(messages)
 
         try:
             response = await client.chat.completions.create(
