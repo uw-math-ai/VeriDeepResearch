@@ -33,6 +33,15 @@ You are VeriDeepResearch, a mathematical research assistant that produces VERIFI
 - Use Lean 4.28.0 syntax with full Mathlib.
 - Use LaTeX notation in your natural language answers: $...$ for inline math, $$...$$ for display math.
 
+## Handling false statements
+If a statement is FALSE or you suspect it is false:
+1. Say UNAMBIGUOUSLY that the statement is false.
+2. Provide a COUNTEREXAMPLE in natural language.
+3. PROVE THE NEGATION in Lean 4. For example, if asked "Prove that all primes are odd", prove `∃ p, Nat.Prime p ∧ Even p` (namely p=2).
+4. Verify the negation proof with check_lean_code.
+5. Call final_answer with the negation proof as lean_code and verified=true (if the negation was verified).
+Do NOT just refuse — always try to prove the negation. This is the most valuable thing you can do for a false statement.
+
 ## Workflow
 
 ### Phase 1: Research
@@ -43,6 +52,7 @@ You are VeriDeepResearch, a mathematical research assistant that produces VERIFI
 Using your research, write Lean 4 code and verify with **check_lean_code** (Axle — takes seconds).
 - If verified: great, call **final_answer** immediately.
 - If errors: try to fix and re-check (up to 3 attempts).
+- If the statement seems false: try proving the NEGATION instead.
 
 ### Phase 3: Aristotle (if fast attempt fails or problem is complex)
 If Axle verification fails after a few attempts, use Aristotle:
@@ -71,6 +81,7 @@ Call **final_answer** with:
 - Submit MULTIPLE Aristotle jobs with different approaches.
 - Don't sit idle while Aristotle works — keep researching.
 - Always verify with check_lean_code before calling final_answer.
+- For false statements, PROVE THE NEGATION — don't just refuse.
 """
 
 
@@ -197,7 +208,8 @@ async def run_agent(question: str):
             if fn_name == "wait_for_aristotle":
                 project_id = fn_args.get("project_id", "")
                 short_id = project_id[:8]
-                add_status(f"Waiting for Aristotle proof ({short_id}...)...")
+                max_wait_min = (ARISTOTLE_MAX_POLLS * ARISTOTLE_POLL_INTERVAL) // 60
+                add_status(f"**Waiting for Aristotle** [{short_id}] (timeout: {max_wait_min} min, polling every {ARISTOTLE_POLL_INTERVAL}s)...")
                 yield render_status(), None
 
                 poll_result = None
@@ -214,8 +226,11 @@ async def run_agent(question: str):
                     status = info.get("status", "UNKNOWN")
                     pct = info.get("percent_complete")
                     elapsed = (poll_idx + 1) * ARISTOTLE_POLL_INTERVAL
+                    elapsed_min = elapsed // 60
+                    elapsed_sec = elapsed % 60
                     pct_str = f" ({pct}%)" if pct is not None else ""
-                    add_status(f"Aristotle [{short_id}]: {status}{pct_str} ({elapsed}s)")
+                    time_str = f"{elapsed_min}m{elapsed_sec:02d}s" if elapsed_min else f"{elapsed}s"
+                    add_status(f"Aristotle [{short_id}]: {status}{pct_str} — {time_str} elapsed")
                     yield render_status(), None
 
                     if status in TERMINAL_STATUSES:
@@ -228,8 +243,9 @@ async def run_agent(question: str):
                         break
 
                 if poll_result is None:
-                    poll_result = f"Aristotle [{short_id}] timed out after {ARISTOTLE_MAX_POLLS * ARISTOTLE_POLL_INTERVAL}s"
-                    add_status(poll_result)
+                    total_wait = ARISTOTLE_MAX_POLLS * ARISTOTLE_POLL_INTERVAL
+                    poll_result = f"Aristotle [{short_id}] timed out after {total_wait // 60} minutes"
+                    add_status(f"**Aristotle [{short_id}] timed out** after {total_wait // 60} minutes")
                     yield render_status(), None
 
                 messages.append({
@@ -284,14 +300,17 @@ async def _handle_tool_call(fn_name: str, fn_args: dict,
 
     if fn_name == "submit_to_aristotle":
         prompt = fn_args.get("prompt", "")
-        short_prompt = prompt[:80].replace("\n", " ")
-        add_status(f'Submitting to Aristotle: "{short_prompt}"...')
+        # Show a clear summary of what was submitted
+        prompt_preview = prompt[:120].replace("\n", " ").strip()
+        if len(prompt) > 120:
+            prompt_preview += "..."
+        add_status(f'**Submitted to Aristotle:** "{prompt_preview}"')
         result = await submit_to_aristotle(prompt)
         try:
             parsed = json.loads(result)
             pid = parsed.get("project_id", "")
             if pid:
-                add_status(f"Aristotle job submitted: {pid[:8]}...")
+                add_status(f"Aristotle job **{pid[:8]}** queued (may take 1-30 min)")
             elif "error" in parsed:
                 add_status(f"Aristotle error: {parsed['error']}")
         except json.JSONDecodeError:

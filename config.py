@@ -18,7 +18,7 @@ LEAN_ENVIRONMENT = "lean-4.28.0"
 # Aristotle (Lean formalization & proving)
 ARISTOTLE_API_KEY = os.getenv("ARISTOTLE_API_KEY", "")
 ARISTOTLE_POLL_INTERVAL = 30   # seconds between status checks
-ARISTOTLE_MAX_POLLS = 40       # 40 * 30s = 20 minutes max wait
+ARISTOTLE_MAX_POLLS = 240      # 240 * 30s = 2 hours max wait
 
 # LeanExplore (Mathlib search)
 LEAN_EXPLORE_API_KEY = os.getenv("LEAN_EXPLORE_API_KEY", "")
