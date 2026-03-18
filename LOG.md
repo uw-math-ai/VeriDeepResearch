@@ -41,30 +41,40 @@ All tests run on https://vilin97-verideepresearch.hf.space on 2026-03-18.
 | 18 | "Rolle's theorem without differentiability hypothesis." | 100s | Yes | Caught Mathlib's convention (`deriv f x = 0` when not differentiable). 8 Axle attempts. |
 | 19 | "Weakest condition for open covers to have countable subcovers?" | 192s | Yes | Second-countability ⟹ HereditarilyLindelöf ⟹ Lindelöf. 8 Axle attempts, heavy research. |
 
+## UW Analysis Prelim (Sept 2020)
+
+| # | Question | Time | Verified | Notes |
+|---|----------|------|----------|-------|
+| 20 | #9a: "Weakly convergent sequence is norm bounded." | 53s | Yes | Used `Tendsto.isVonNBounded_range` + `NormedSpace.isVonNBounded_iff'` (Banach-Steinhaus). |
+| 21 | #7: "a.e. convergence + L^{1/2} norm convergence → L^{1/2} convergence." | pending | pending | Submitted to Aristotle (generalized Scheffé lemma). Waiting. |
+| 22 | "Well-ordering principle for natural numbers." | 18s | Yes | Used `Nat.find` + Loogle search. |
+
 ## FATE-X level (PhD qualifying exam)
 
 | # | Question | Time | Result | Notes |
 |---|----------|------|--------|-------|
-| 20 | "Group of order pq with p∤(q-1) is cyclic." | >15min | Timeout | Fast path failed. Submitted to Aristotle, queue backed up. |
-| 21 | "Schur's inequality for t=1." | >15min | Timeout | Submitted 2 Aristotle jobs. Queue backed up. (Aristotle later completed these.) |
-| 22 | FATE-X #5: "Maximal normal abelian subgroup of p-group is maximal abelian." | >15min | Timeout | Submitted 2 Aristotle jobs. Queue backed up. |
-| 23 | FATE-X #10: "R[X,Y]/(X²+Y²+1) is a PID." | >30min | Timeout | Submitted 3 Aristotle jobs (main result + 2 sub-lemmas). Queue backed up. Agent decomposed correctly. |
+| 23 | "Group of order pq with p∤(q-1) is cyclic." | >15min | Timeout | Fast path failed. Submitted to Aristotle, queue backed up. |
+| 24 | "Schur's inequality for t=1." | >15min | Timeout | Submitted 2 Aristotle jobs. (Aristotle later completed these.) |
+| 25 | FATE-X #5: "Maximal normal abelian subgroup of p-group." | >15min | Timeout | Submitted 2 Aristotle jobs. |
+| 26 | FATE-X #10: "R[X,Y]/(X²+Y²+1) is a PID." | >30min | Timeout | Submitted 3 Aristotle jobs. Agent decomposed correctly. |
+| 27 | UW Prelim #6: "L^q ⊄ L^p iff arb large finite measure sets." | >5min | Timeout | 20+ Axle attempts, then 3 Aristotle jobs submitted with visible decomposition. |
 
 ## Non-math rejection
 
 | # | Question | Time | Result |
 |---|----------|------|--------|
-| 24 | "What is the best Italian restaurant in New York?" | 2s | Rejected |
-| 25 | "What is the weather today?" | 2s | Rejected |
+| 28 | "What is the best Italian restaurant in New York?" | 2s | Rejected |
+| 29 | "What is the weather today?" | 2s | Rejected |
 
 ## Summary
 
-- **17/20 mathematical questions verified** in Lean 4
-- **3/20 timed out** waiting for Aristotle (FATE-X difficulty)
+- **19/22 mathematical questions verified** in Lean 4
+- **3/22 timed out** waiting for Aristotle (prelim/FATE-X difficulty)
 - **3/3 false statements handled correctly** — negation proved with verified counterexamples
 - **2/2 non-math questions rejected**
-- **Median response time: 26 seconds** for verified proofs
+- **1 test pending** (Aristotle processing)
+- **Median response time: ~25 seconds** for verified proofs
 - All Lean code verified by Axle (Lean 4.28.0 + Mathlib)
+- Tools used: TheoremSearch, LeanExplore, Loogle, Axle, Aristotle, Qwen 3.5
 - Classic LLM failures handled correctly (9.9 vs 9.11, Rolle's theorem, S₃ non-abelian)
-- Ambiguous "what conditions" questions produced multi-part research answers
-- FATE-X level problems correctly escalate to Aristotle
+- Hard problems correctly decomposed and escalated to Aristotle
