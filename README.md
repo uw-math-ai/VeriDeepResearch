@@ -20,6 +20,6 @@ Implementation (all tools are web-based):
 - TheoremSearch API to find mathematical theorems on arXiv
 - Aristotle to formalize in Lean
 - Lean Explore to search mathlib
-- Axle to check Lean correctness (on Lean v4.24)
+- Axle to check Lean correctness (on Lean v4.28)
 - chatbot interface on the web (single query only)
 - HuggingFace for hosting

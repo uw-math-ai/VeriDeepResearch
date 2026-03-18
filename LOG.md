@@ -48,18 +48,19 @@ All tests run on https://vilin97-verideepresearch.hf.space on 2026-03-18.
 | 20 | "Group of order pq with p∤(q-1) is cyclic." | >15min | Timeout | Fast path failed. Submitted to Aristotle, queue backed up. |
 | 21 | "Schur's inequality for t=1." | >15min | Timeout | Submitted 2 Aristotle jobs. Queue backed up. (Aristotle later completed these.) |
 | 22 | FATE-X #5: "Maximal normal abelian subgroup of p-group is maximal abelian." | >15min | Timeout | Submitted 2 Aristotle jobs. Queue backed up. |
+| 23 | FATE-X #10: "R[X,Y]/(X²+Y²+1) is a PID." | >30min | Timeout | Submitted 3 Aristotle jobs (main result + 2 sub-lemmas). Queue backed up. Agent decomposed correctly. |
 
 ## Non-math rejection
 
 | # | Question | Time | Result |
 |---|----------|------|--------|
-| 23 | "What is the best Italian restaurant in New York?" | 2s | Rejected |
-| 24 | "What is the weather today?" | 2s | Rejected |
+| 24 | "What is the best Italian restaurant in New York?" | 2s | Rejected |
+| 25 | "What is the weather today?" | 2s | Rejected |
 
 ## Summary
 
-- **17/19 mathematical questions verified** in Lean 4
-- **2/19 timed out** waiting for Aristotle (FATE-X difficulty)
+- **17/20 mathematical questions verified** in Lean 4
+- **3/20 timed out** waiting for Aristotle (FATE-X difficulty)
 - **3/3 false statements handled correctly** — negation proved with verified counterexamples
 - **2/2 non-math questions rejected**
 - **Median response time: 26 seconds** for verified proofs
