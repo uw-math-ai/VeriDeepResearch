@@ -21,6 +21,7 @@ def send_result_email(
     answer: str,
     lean_code: str,
     verified: bool,
+    stats: dict | None = None,
 ) -> bool:
     """Send research results via email with attached files. Returns True on success."""
     if not SMTP_EMAIL or not SMTP_PASSWORD:
@@ -35,7 +36,37 @@ def send_result_email(
     msg["From"] = f"VeriDeepResearch <{SMTP_EMAIL}>"
     msg["To"] = to_email
 
-    # HTML body (concise summary)
+    # Format stats
+    stats_html = ""
+    if stats:
+        elapsed = stats.get("elapsed_seconds", 0)
+        mins = int(elapsed) // 60
+        secs = int(elapsed) % 60
+        time_str = f"{mins}m {secs}s" if mins else f"{secs}s"
+        cost = stats.get("total_cost_usd", 0)
+        inp = stats.get("total_input_tokens", 0)
+        out = stats.get("total_output_tokens", 0)
+        tool_counts = stats.get("tool_counts", {})
+
+        tool_rows = ""
+        for tool, count in sorted(tool_counts.items(), key=lambda x: -x[1]):
+            tool_rows += f"<tr><td style='padding: 2px 12px 2px 0;'>{_escape(tool)}</td><td>{count}</td></tr>"
+
+        stats_html = f"""
+<h3>Stats</h3>
+<table style="font-size: 14px; border-collapse: collapse;">
+<tr><td style="padding: 2px 12px 2px 0;"><strong>Time</strong></td><td>{time_str}</td></tr>
+<tr><td style="padding: 2px 12px 2px 0;"><strong>Cost</strong></td><td>${cost:.4f}</td></tr>
+<tr><td style="padding: 2px 12px 2px 0;"><strong>Tokens</strong></td><td>{inp:,} in / {out:,} out</td></tr>
+</table>
+<br>
+<table style="font-size: 13px; border-collapse: collapse;">
+<tr><th style="text-align: left; padding: 2px 12px 2px 0;">Tool</th><th style="text-align: left;">Calls</th></tr>
+{tool_rows}
+</table>
+"""
+
+    # HTML body
     html = f"""\
 <html>
 <body style="font-family: -apple-system, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px;">
@@ -43,6 +74,8 @@ def send_result_email(
 
 <p><strong>Question:</strong> {_escape(question)}</p>
 <p><strong>Status:</strong> <span style="color: {'green' if verified else 'orange'}; font-weight: bold;">{badge}</span></p>
+
+{stats_html}
 
 <hr>
 

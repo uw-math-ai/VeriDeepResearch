@@ -168,9 +168,13 @@ async def run_agent(question: str):
         base_url=TOKEN_FACTORY_BASE_URL,
         api_key=TOKEN_FACTORY_API_KEY,
     )
+    import time as _time
+    _start_time = _time.time()
+
     cost_tracker = CostTracker()
     status_log: list[str] = []
     full_log: list[str] = []  # Detailed log with tool contents
+    tool_counts: dict[str, int] = {}  # Count calls per tool
 
     def add_status(msg: str):
         status_log.append(msg)
@@ -178,11 +182,24 @@ async def run_agent(question: str):
     def log_detail(msg: str):
         full_log.append(msg)
 
+    def count_tool(name: str):
+        tool_counts[name] = tool_counts.get(name, 0) + 1
+
     def render_status():
         return "\n".join(f"- {s}" for s in status_log)
 
     def get_full_log():
         return "\n\n".join(full_log)
+
+    def get_stats() -> dict:
+        elapsed = _time.time() - _start_time
+        return {
+            "elapsed_seconds": round(elapsed, 1),
+            "total_input_tokens": cost_tracker.total_input_tokens,
+            "total_output_tokens": cost_tracker.total_output_tokens,
+            "total_cost_usd": round(cost_tracker.total_cost, 4),
+            "tool_counts": dict(tool_counts),
+        }
 
     messages: list[dict] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -248,6 +265,7 @@ async def run_agent(question: str):
             except json.JSONDecodeError:
                 fn_args = {}
 
+            count_tool(fn_name)
             log_detail(f"## Tool call: `{fn_name}`\n**Args:** ```json\n{json.dumps(fn_args, indent=2)[:2000]}\n```")
 
             result = await _handle_tool_call(
@@ -259,9 +277,9 @@ async def run_agent(question: str):
             # final_answer terminates the loop
             if fn_name == "final_answer":
                 add_status("Research complete!")
-                yield render_status(), fn_args
-                # Attach full_log to result for email
                 fn_args["_full_log"] = get_full_log()
+                fn_args["_stats"] = get_stats()
+                yield render_status(), fn_args
                 return
 
             yield render_status(), None

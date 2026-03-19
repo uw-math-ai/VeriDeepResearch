@@ -43,6 +43,7 @@ async def respond(message, history, email):
             lean_code = final_result.get("lean_code", "") if final_result else ""
             verified = final_result.get("verified", False) if final_result else False
             full_log = final_result.get("_full_log", "") if final_result else ""
+            stats = final_result.get("_stats") if final_result else None
             sent = send_result_email(
                 to_email=email.strip(),
                 question=message,
@@ -51,6 +52,7 @@ async def respond(message, history, email):
                 answer=answer,
                 lean_code=lean_code,
                 verified=verified,
+                stats=stats,
             )
             if sent:
                 yield formatted + "\n\n---\n*Results sent to " + email.strip() + "*"
