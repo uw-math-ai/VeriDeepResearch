@@ -81,9 +81,11 @@ Call **final_answer** with:
 ## Key principles
 - **NEVER sit idle.** Always be actively trying to prove the result.
 - If check_lean_code says okay=true, IMMEDIATELY call final_answer. This is the highest priority.
-- Use BOTH your own code AND generate_lean_proof (Qwen 3.5) — try different approaches.
-- Submit to Aristotle early, but don't wait for it — keep proving.
-- Race: you + Qwen vs Aristotle. First verified proof wins.
+- Use BOTH your own code AND generate_lean_proof (Qwen 3.5) — try different approaches with different hints.
+- Submit to Aristotle early, but keep proving — don't call wait_for_aristotle until you've made at least 10 proof attempts.
+- When you DO call wait_for_aristotle and it returns, ALWAYS try to verify the result with check_lean_code.
+- **NEVER call wait_for_aristotle as your FIRST action after submitting.** Always try at least 5-10 more proof attempts first.
+- If after many attempts nothing verifies: call final_answer with the BEST (fewest errors) Lean code you have, verified=false. Include the error messages in your answer. An unverified answer with good Lean code is better than no answer.
 - For false statements, PROVE THE NEGATION — don't just refuse.
 """
 

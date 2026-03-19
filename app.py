@@ -5,11 +5,11 @@ from email_sender import send_result_email
 
 
 EXAMPLES = [
-    "Prove that the sum of two even numbers is even.",
-    "Is the square root of 2 irrational?",
-    "Prove that there are infinitely many prime numbers.",
-    "Show that for all natural numbers n, n + 0 = n.",
-    "Prove that the composition of two injective functions is injective.",
+    ["Prove that the sum of two even numbers is even."],
+    ["Is the square root of 2 irrational?"],
+    ["Prove that there are infinitely many prime numbers."],
+    ["Show that for all natural numbers n, n + 0 = n."],
+    ["Prove that the composition of two injective functions is injective."],
 ]
 
 LATEX_DELIMITERS = [
