@@ -282,6 +282,44 @@ async def run_agent(question: str):
                 yield render_status(), fn_args
                 return
 
+            # AUTO-FINALIZE: if check_lean_code returned okay=true,
+            # force immediate finalization instead of letting the LLM decide.
+            if fn_name == "check_lean_code":
+                try:
+                    parsed = json.loads(result)
+                    if parsed.get("okay"):
+                        code = fn_args.get("code", "")
+                        add_status("Lean code verified! Auto-finalizing...")
+                        log_detail("## Auto-finalize: Axle returned okay=true")
+                        auto_result = {
+                            "answer": "(Proof verified — generating explanation...)",
+                            "lean_code": code,
+                            "verified": True,
+                            "_full_log": get_full_log(),
+                            "_stats": get_stats(),
+                        }
+                        # Ask the LLM for a proper natural language explanation
+                        try:
+                            explain_resp = await client.chat.completions.create(
+                                model=KIMI_MODEL,
+                                messages=[
+                                    {"role": "system", "content": "You are a math expert. Given verified Lean 4 code, write a clear natural language explanation of what was proved and how. Use LaTeX ($...$ and $$...$$). Be concise."},
+                                    {"role": "user", "content": f"Question: {question}\n\nVerified Lean 4 code:\n```lean4\n{code}\n```\n\nWrite a natural language explanation of this proof."},
+                                ],
+                                temperature=0.4,
+                                max_tokens=2048,
+                            )
+                            if explain_resp.usage:
+                                cost_tracker.add(explain_resp.usage)
+                            auto_result["answer"] = explain_resp.choices[0].message.content or auto_result["answer"]
+                            auto_result["_stats"] = get_stats()
+                        except Exception:
+                            pass
+                        yield render_status(), auto_result
+                        return
+                except (json.JSONDecodeError, KeyError):
+                    pass
+
             yield render_status(), None
 
             # For wait_for_aristotle, we need special handling with polling
