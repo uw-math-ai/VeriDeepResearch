@@ -53,7 +53,7 @@ All tests run on https://vilin97-verideepresearch.hf.space on 2026-03-18.
 
 | # | Question | Time | Result | Notes |
 |---|----------|------|--------|-------|
-| 23 | "Group of order pq with p∤(q-1) is cyclic." | ~2min | Almost | 16 Mathlib/Loogle searches, Qwen 3.5 generated code, got 0 Lean errors at 1m56s but Kimi context overflowed (400). Near-miss. |
+| 23 | "Group of order pq with p∤(q-1) is cyclic." | 20min | Best-effort | 25+ searches, Qwen 3.5 used 5 times (up to 9.7K chars), error count: 49→23→7→10. Context compression prevented overflow. Submitted to Aristotle. Gave best-effort unverified code (3925 chars, correct structure). |
 | 24 | "Schur's inequality for t=1." | **67s** | **Yes** | **Previously >15min timeout.** Kimi tried (failed), Qwen 3.5 generated 602-char proof, Axle verified, done. No Aristotle needed. |
 | 25 | FATE-X #5: "Maximal normal abelian subgroup of p-group." | >15min | Timeout | Submitted 2 Aristotle jobs. |
 | 26 | FATE-X #10: "R[X,Y]/(X²+Y²+1) is a PID." | >30min | Timeout | Submitted 3 Aristotle jobs. Agent decomposed correctly. |
