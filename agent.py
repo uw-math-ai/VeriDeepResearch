@@ -170,12 +170,19 @@ async def run_agent(question: str):
     )
     cost_tracker = CostTracker()
     status_log: list[str] = []
+    full_log: list[str] = []  # Detailed log with tool contents
 
     def add_status(msg: str):
         status_log.append(msg)
 
+    def log_detail(msg: str):
+        full_log.append(msg)
+
     def render_status():
         return "\n".join(f"- {s}" for s in status_log)
+
+    def get_full_log():
+        return "\n\n".join(full_log)
 
     messages: list[dict] = [
         {"role": "system", "content": SYSTEM_PROMPT},
@@ -228,6 +235,8 @@ async def run_agent(question: str):
         messages.append(msg_dict)
 
         if not assistant_msg.tool_calls:
+            if assistant_msg.content:
+                log_detail(f"## Agent thinking\n{assistant_msg.content}")
             add_status("Thinking...")
             yield render_status(), None
             continue
@@ -239,15 +248,20 @@ async def run_agent(question: str):
             except json.JSONDecodeError:
                 fn_args = {}
 
+            log_detail(f"## Tool call: `{fn_name}`\n**Args:** ```json\n{json.dumps(fn_args, indent=2)[:2000]}\n```")
+
             result = await _handle_tool_call(
                 fn_name, fn_args, add_status, render_status,
-                # Pass the yield-like callback for streaming status updates
             )
+
+            log_detail(f"**Result:** ```\n{result[:5000]}\n```")
 
             # final_answer terminates the loop
             if fn_name == "final_answer":
                 add_status("Research complete!")
                 yield render_status(), fn_args
+                # Attach full_log to result for email
+                fn_args["_full_log"] = get_full_log()
                 return
 
             yield render_status(), None

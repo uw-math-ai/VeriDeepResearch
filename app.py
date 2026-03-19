@@ -42,10 +42,12 @@ async def respond(message, history, email):
             answer = final_result.get("answer", "") if final_result else ""
             lean_code = final_result.get("lean_code", "") if final_result else ""
             verified = final_result.get("verified", False) if final_result else False
+            full_log = final_result.get("_full_log", "") if final_result else ""
             sent = send_result_email(
                 to_email=email.strip(),
                 question=message,
                 status_log=status_text,
+                full_log=full_log,
                 answer=answer,
                 lean_code=lean_code,
                 verified=verified,
