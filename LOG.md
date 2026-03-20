@@ -58,6 +58,9 @@ All tests run on https://vilin97-verideepresearch.hf.space (local testing via Py
 | 30 | **B4**: Matrix sum bound S ≤ (n+2)N/3. | 183s | $0.05 | **Yes** | 3 Qwen attempts, 5 Axle checks. |
 | 31 | **B5**: Modular inverse ordering > p/4-1. | 84s | $0.02 | **Yes** | Cheapest Putnam solve. |
 | 32 | **B6**: Largest r for g(n+1)-g(n) ≥ (g(g(n)))^r. | 511s | $0.25 | **Yes** | Aristotle started (1%), agent proved independently. |
+| 33 | **A3**: Digit string game (Alice vs Bob). | 163s | $0.12 | **Yes** | Combinatorial game theory formalized. |
+| 34 | **A4**: Minimal k for commuting matrices. | 64s | $0.02 | **Yes** | Fastest Putnam B-side solve. |
+| 35 | **B1**: Plane coloring → monochromatic. | 225s | $0.10 | **Yes** | Geometric argument formalized. |
 
 ## Non-math rejection
 
@@ -68,8 +71,8 @@ All tests run on https://vilin97-verideepresearch.hf.space (local testing via Py
 
 ## Summary
 
-- **9/9 Putnam 2025 problems verified** (A1, A2, A5, A6, B2, B3, B4, B5, B6). Total cost: $0.89.
-- **30/30 mathematical questions verified** in Lean 4 across all categories
+- **12/12 Putnam 2025 problems verified** (A1-A6 and B1-B6). Total cost: $1.13.
+- **33/33 mathematical questions verified** in Lean 4 across all categories
 - **3/3 false statements caught** with verified negation proofs
 - **2/2 non-math questions rejected**
 - **Median response time: ~70 seconds** for verified proofs
