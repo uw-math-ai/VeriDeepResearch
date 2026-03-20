@@ -89,7 +89,7 @@ def send_result_email(
 
 <h3>Answer</h3>
 <div style="background: #f8f9fa; padding: 16px; border-radius: 8px; margin: 12px 0;">
-{_escape(answer).replace(chr(10), '<br>')}
+{_md_to_html(answer)}
 </div>
 
 <h3>Lean 4 Code ({badge})</h3>
@@ -163,3 +163,100 @@ def _escape(text: str) -> str:
         .replace(">", "&gt;")
         .replace('"', "&quot;")
     )
+
+
+def _md_to_html(text: str) -> str:
+    """Convert markdown-like text to simple HTML for email rendering.
+
+    Handles: headers, bold, italic, inline code, code blocks, LaTeX,
+    lists, and paragraphs. No external dependencies.
+    """
+    import re
+
+    lines = text.split("\n")
+    html_lines = []
+    in_code_block = False
+    in_list = False
+
+    for line in lines:
+        # Code blocks
+        if line.strip().startswith("```"):
+            if in_code_block:
+                html_lines.append("</pre>")
+                in_code_block = False
+            else:
+                html_lines.append('<pre style="background:#1e1e1e;color:#d4d4d4;padding:12px;border-radius:6px;font-size:13px;overflow-x:auto;">')
+                in_code_block = True
+            continue
+        if in_code_block:
+            html_lines.append(_escape(line))
+            continue
+
+        # Close list if needed
+        if in_list and not line.strip().startswith(("- ", "* ", "1.", "2.", "3.", "4.", "5.")):
+            html_lines.append("</ul>")
+            in_list = False
+
+        stripped = line.strip()
+
+        # Empty line → paragraph break
+        if not stripped:
+            html_lines.append("<br>")
+            continue
+
+        # Headers
+        if stripped.startswith("### "):
+            html_lines.append(f"<h4>{_inline_format(_escape(stripped[4:]))}</h4>")
+            continue
+        if stripped.startswith("## "):
+            html_lines.append(f"<h3>{_inline_format(_escape(stripped[3:]))}</h3>")
+            continue
+        if stripped.startswith("# "):
+            html_lines.append(f"<h2>{_inline_format(_escape(stripped[2:]))}</h2>")
+            continue
+
+        # List items
+        if stripped.startswith(("- ", "* ")):
+            if not in_list:
+                html_lines.append("<ul>")
+                in_list = True
+            html_lines.append(f"<li>{_inline_format(_escape(stripped[2:]))}</li>")
+            continue
+
+        # Regular paragraph
+        html_lines.append(f"<p>{_inline_format(_escape(stripped))}</p>")
+
+    if in_code_block:
+        html_lines.append("</pre>")
+    if in_list:
+        html_lines.append("</ul>")
+
+    return "\n".join(html_lines)
+
+
+def _inline_format(text: str) -> str:
+    """Apply inline markdown formatting: bold, italic, code, LaTeX."""
+    import re
+    # Display LaTeX: $$...$$ → styled span
+    text = re.sub(
+        r'\$\$(.+?)\$\$',
+        r'<div style="text-align:center;margin:8px 0;font-family:serif;font-style:italic;">\1</div>',
+        text, flags=re.DOTALL,
+    )
+    # Inline LaTeX: $...$ → styled span (but not $$)
+    text = re.sub(
+        r'(?<!\$)\$(?!\$)(.+?)(?<!\$)\$(?!\$)',
+        r'<span style="font-family:serif;font-style:italic;">\1</span>',
+        text,
+    )
+    # Inline code: `...`
+    text = re.sub(
+        r'`([^`]+)`',
+        r'<code style="background:#f0f0f0;padding:1px 4px;border-radius:3px;font-size:13px;">\1</code>',
+        text,
+    )
+    # Bold: **...**
+    text = re.sub(r'\*\*(.+?)\*\*', r'<strong>\1</strong>', text)
+    # Italic: *...*
+    text = re.sub(r'(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)', r'<em>\1</em>', text)
+    return text

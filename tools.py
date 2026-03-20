@@ -12,8 +12,6 @@ from config import (
     AXLE_BASE_URL,
     LEAN_ENVIRONMENT,
     ARISTOTLE_API_KEY,
-    TOKEN_FACTORY_API_KEY,
-    TOKEN_FACTORY_BASE_URL,
 )
 
 
@@ -137,60 +135,6 @@ async def check_lean_code(code: str) -> str:
     except Exception as e:
         return json.dumps({"error": f"Axle error: {e}"})
 
-
-# ---------------------------------------------------------------------------
-# Qwen 3.5 (Lean proof generation)
-# ---------------------------------------------------------------------------
-
-QWEN_MODEL = "Qwen/Qwen3.5-397B-A17B"
-QWEN_LEAN_SYSTEM = """\
-You are a Lean 4 proof assistant. You write correct Lean 4 code with Mathlib.
-Given a mathematical statement, produce a COMPLETE Lean 4 file that proves it.
-Rules:
-- Start with `import Mathlib`
-- Use Lean 4 syntax (NOT Lean 3)
-- The code must compile with Lean 4.28.0 and current Mathlib
-- Use tactics like simp, ring, omega, norm_num, linarith, exact?, apply? where appropriate
-- Output ONLY the Lean code, no explanations
-"""
-
-
-async def generate_lean_proof(statement: str, context: str = "") -> str:
-    """Use Qwen 3.5 to generate Lean 4 proof code."""
-    from openai import AsyncOpenAI
-
-    client = AsyncOpenAI(
-        base_url=TOKEN_FACTORY_BASE_URL,
-        api_key=TOKEN_FACTORY_API_KEY,
-    )
-    try:
-        prompt = f"Write a Lean 4 proof for:\n{statement}"
-        if context:
-            prompt += f"\n\nContext (relevant Mathlib declarations):\n{context}"
-
-        response = await client.chat.completions.create(
-            model=QWEN_MODEL,
-            messages=[
-                {"role": "system", "content": QWEN_LEAN_SYSTEM},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.6,
-            max_tokens=8192,
-        )
-        content = response.choices[0].message.content or ""
-        # Extract lean code from markdown code block if present
-        if "```lean" in content:
-            start = content.find("```lean")
-            end = content.find("```", start + 6)
-            if end > start:
-                code = content[start:end]
-                # Remove the ```lean prefix
-                code = code.split("\n", 1)[1] if "\n" in code else code[7:]
-                return code.strip()
-        # If no code block, return as-is (might be raw lean code)
-        return content.strip()
-    except Exception as e:
-        return f"Qwen error: {e}"
 
 
 # ---------------------------------------------------------------------------
@@ -337,32 +281,6 @@ TOOL_DEFINITIONS = [
                     }
                 },
                 "required": ["query"],
-            },
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "generate_lean_proof",
-            "description": (
-                "Use Qwen 3.5 (a 397B-parameter LLM specialized in code) to generate "
-                "Lean 4 proof code. Give it the mathematical statement and optionally "
-                "relevant Mathlib context. Returns Lean code that you should then verify "
-                "with check_lean_code. Use this as an alternative to writing proofs yourself."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "statement": {
-                        "type": "string",
-                        "description": "The mathematical statement to prove, in natural language or Lean-like notation.",
-                    },
-                    "context": {
-                        "type": "string",
-                        "description": "Optional: relevant Mathlib declarations, search results, or hints.",
-                    },
-                },
-                "required": ["statement"],
             },
         },
     },

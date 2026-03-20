@@ -19,7 +19,6 @@ from tools import (
     search_lean_library,
     search_loogle,
     check_lean_code,
-    generate_lean_proof,
     submit_to_aristotle,
     check_aristotle_status,
     get_aristotle_result,
@@ -52,40 +51,36 @@ Do NOT just refuse — always try to prove the negation. This is the most valuab
 3. Search Mathlib by type pattern with **search_loogle** (e.g. "_ + _ = _ + _", "Nat → Nat → Prop").
 
 ### Phase 2: Fast attempt (try this first)
-Try to prove the result using one or more of:
-- Write Lean 4 code yourself and verify with **check_lean_code** (Axle — takes seconds).
-- Use **generate_lean_proof** to have Qwen 3.5 write the proof, then verify with check_lean_code.
-- **CRITICAL: If check_lean_code returns okay=true, IMMEDIATELY call final_answer. Do not wait for Aristotle or do any more work.**
-- If errors: try to fix and re-check. Alternate between writing code yourself and using generate_lean_proof.
+Write Lean 4 code yourself and verify with **check_lean_code** (Axle — takes seconds).
+- The code MUST contain at least one `theorem` or `lemma` declaration — not just `example` or `#check`.
+- If errors: analyze the error, fix, and re-check.
 - If the statement seems false: try proving the NEGATION instead.
+- Note: the system will automatically finalize when Axle returns okay=true AND the code is sorry-free. You don't need to call final_answer yourself after a successful check.
 
 ### Phase 3: Aristotle + active proving (if fast attempt fails)
 If Axle verification fails after several attempts:
-1. **Submit to Aristotle** — decompose into main result + sub-lemmas, submit ALL.
-2. **DO NOT WAIT for Aristotle.** Instead, keep actively trying to close the proof yourself:
-   - Use **generate_lean_proof** (Qwen 3.5) with different prompts and hints.
-   - Search for more Mathlib declarations with search_lean_library and search_loogle.
-   - Write Lean code yourself with different proof strategies.
-   - Verify each attempt with check_lean_code.
-   - **If ANY attempt verifies (okay=true), IMMEDIATELY call final_answer. Do not wait for Aristotle.**
-3. **Periodically check Aristotle** with check_aristotle_status — but only between your own proof attempts, never as the primary activity.
-4. If Aristotle completes, download with get_aristotle_result and verify with check_lean_code.
-5. The goal is to RACE: you and Qwen try to prove it while Aristotle also works on it. Whoever finishes first wins.
+1. **Submit to Aristotle** — submit the main result as a natural language prompt.
+2. **Keep actively trying** — search more declarations, try different proof strategies, verify with check_lean_code. Don't just wait.
+3. **Periodically check Aristotle** with check_aristotle_status.
+4. **If Aristotle returns with sorry**: this is NOT a failure — it's progress. Take Aristotle's output, identify which sub-lemmas still have sorry, and:
+   - Submit EACH sorry'd sub-lemma to Aristotle as a NEW job
+   - Try to prove the sorry'd sub-lemmas yourself
+   - Search Mathlib for the sorry'd statements
+   - Keep iterating until all sorries are filled
+5. If Aristotle completes sorry-free, verify with check_lean_code.
 
 ### Phase 4: Final answer
 Call **final_answer** with:
 - Clear natural language explanation (with LaTeX math)
 - Complete verified Lean 4 code (single file, starts with `import Mathlib`)
+- The code MUST declare at least one `theorem` or `lemma`
 - Whether verification succeeded
 
 ## Key principles
 - **NEVER sit idle.** Always be actively trying to prove the result.
-- If check_lean_code says okay=true, IMMEDIATELY call final_answer. This is the highest priority.
-- Use BOTH your own code AND generate_lean_proof (Qwen 3.5) — try different approaches with different hints.
-- Submit to Aristotle early, but keep proving — don't call wait_for_aristotle until you've made at least 10 proof attempts.
-- When you DO call wait_for_aristotle and it returns, ALWAYS try to verify the result with check_lean_code.
-- **NEVER call wait_for_aristotle as your FIRST action after submitting.** Always try at least 5-10 more proof attempts first.
-- If after many attempts nothing verifies: call final_answer with the BEST (fewest errors) Lean code you have, verified=false. Include the error messages in your answer. An unverified answer with good Lean code is better than no answer.
+- Write ALL Lean code yourself — you are the prover. Aristotle is your backup.
+- The code MUST contain `theorem` or `lemma` declarations — never just `example`, `#check`, or `sorry`.
+- When Aristotle returns code with sorry, DECOMPOSE the sorry'd lemmas and resubmit. Don't give up.
 - For false statements, PROVE THE NEGATION — don't just refuse.
 """
 
@@ -294,8 +289,14 @@ async def run_agent(question: str):
                             "sorry" in code
                             or any("sorry" in e for e in tool_errors)
                         )
+                        has_theorem = any(
+                            line.strip().startswith(("theorem ", "lemma "))
+                            for line in code.split("\n")
+                        )
                         if has_sorry:
                             add_status("Lean code compiles but contains `sorry` — proof incomplete, continuing...")
+                        elif not has_theorem:
+                            add_status("Lean code compiles but has no theorem/lemma declarations — continuing...")
                         else:
                             add_status("Lean code verified (sorry-free)! Auto-finalizing...")
                             log_detail("## Auto-finalize: Axle okay=true, no sorry detected")
@@ -415,14 +416,6 @@ async def _handle_tool_call(fn_name: str, fn_args: dict,
         query = fn_args.get("query", "")
         add_status(f'Searching Loogle: "{query}"...')
         return await search_loogle(query)
-
-    if fn_name == "generate_lean_proof":
-        statement = fn_args.get("statement", "")
-        short_stmt = statement[:80].replace("\n", " ")
-        add_status(f'Generating proof with Qwen 3.5: "{short_stmt}"...')
-        result = await generate_lean_proof(statement, fn_args.get("context", ""))
-        add_status(f"Qwen 3.5 generated {len(result)} chars of Lean code")
-        return result
 
     if fn_name == "check_lean_code":
         add_status("Verifying Lean code with Axle...")
