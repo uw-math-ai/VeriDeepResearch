@@ -28,7 +28,15 @@ def send_result_email(
         print("SMTP not configured, skipping email")
         return False
 
-    badge = "VERIFIED" if verified else "UNVERIFIED (best effort)"
+    has_sorry = "sorry" in lean_code if lean_code else False
+    if verified and has_sorry:
+        verified = False
+    if verified:
+        badge = "VERIFIED"
+    elif has_sorry:
+        badge = "PARTIAL (contains sorry)"
+    else:
+        badge = "UNVERIFIED (best effort)"
     subject = f"VeriDeepResearch: {question[:60]}{'...' if len(question) > 60 else ''}"
 
     msg = MIMEMultipart("mixed")

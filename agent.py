@@ -282,41 +282,50 @@ async def run_agent(question: str):
                 yield render_status(), fn_args
                 return
 
-            # AUTO-FINALIZE: if check_lean_code returned okay=true,
+            # AUTO-FINALIZE: if check_lean_code returned okay=true AND sorry-free,
             # force immediate finalization instead of letting the LLM decide.
             if fn_name == "check_lean_code":
                 try:
                     parsed = json.loads(result)
                     if parsed.get("okay"):
                         code = fn_args.get("code", "")
-                        add_status("Lean code verified! Auto-finalizing...")
-                        log_detail("## Auto-finalize: Axle returned okay=true")
-                        auto_result = {
-                            "answer": "(Proof verified — generating explanation...)",
-                            "lean_code": code,
-                            "verified": True,
-                            "_full_log": get_full_log(),
-                            "_stats": get_stats(),
-                        }
-                        # Ask the LLM for a proper natural language explanation
-                        try:
-                            explain_resp = await client.chat.completions.create(
-                                model=KIMI_MODEL,
-                                messages=[
-                                    {"role": "system", "content": "You are a math expert. Given verified Lean 4 code, write a clear natural language explanation of what was proved and how. Use LaTeX ($...$ and $$...$$). Be concise."},
-                                    {"role": "user", "content": f"Question: {question}\n\nVerified Lean 4 code:\n```lean4\n{code}\n```\n\nWrite a natural language explanation of this proof."},
-                                ],
-                                temperature=0.4,
-                                max_tokens=2048,
-                            )
-                            if explain_resp.usage:
-                                cost_tracker.add(explain_resp.usage)
-                            auto_result["answer"] = explain_resp.choices[0].message.content or auto_result["answer"]
-                            auto_result["_stats"] = get_stats()
-                        except Exception:
-                            pass
-                        yield render_status(), auto_result
-                        return
+                        tool_errors = parsed.get("tool_errors", [])
+                        has_sorry = (
+                            "sorry" in code
+                            or any("sorry" in e for e in tool_errors)
+                        )
+                        if has_sorry:
+                            add_status("Lean code compiles but contains `sorry` — proof incomplete, continuing...")
+                        else:
+                            add_status("Lean code verified (sorry-free)! Auto-finalizing...")
+                            log_detail("## Auto-finalize: Axle okay=true, no sorry detected")
+                            answer = _generate_fallback_explanation(question, code)
+                            try:
+                                explain_resp = await client.chat.completions.create(
+                                    model=KIMI_MODEL,
+                                    messages=[
+                                        {"role": "system", "content": "Write a clear, concise natural language explanation of this verified Lean 4 proof. Use LaTeX ($...$, $$...$$). Focus on the mathematical content."},
+                                        {"role": "user", "content": f"Question: {question}\n\nVerified Lean 4 code:\n```lean4\n{code[:3000]}\n```"},
+                                    ],
+                                    temperature=0.4,
+                                    max_tokens=2048,
+                                )
+                                if explain_resp.usage:
+                                    cost_tracker.add(explain_resp.usage)
+                                llm_answer = explain_resp.choices[0].message.content
+                                if llm_answer and len(llm_answer) > 20:
+                                    answer = llm_answer
+                            except Exception as e:
+                                log_detail(f"## Explanation generation failed: {e}")
+                            auto_result = {
+                                "answer": answer,
+                                "lean_code": code,
+                                "verified": True,
+                                "_full_log": get_full_log(),
+                                "_stats": get_stats(),
+                            }
+                            yield render_status(), auto_result
+                            return
                 except (json.JSONDecodeError, KeyError):
                     pass
 
@@ -469,6 +478,32 @@ async def _handle_tool_call(fn_name: str, fn_args: dict,
     return json.dumps({"error": f"Unknown tool: {fn_name}"})
 
 
+def _generate_fallback_explanation(question: str, lean_code: str) -> str:
+    """Generate a basic explanation from the Lean code when the LLM call fails."""
+    lines = lean_code.strip().split("\n")
+    theorems = [l.strip() for l in lines if l.strip().startswith(("theorem ", "lemma ", "example "))]
+    tactics = []
+    for l in lines:
+        stripped = l.strip()
+        if stripped and not stripped.startswith(("--", "/-", "import", "open", "variable", "section", "end", "namespace", "#")):
+            for t in ["simp", "ring", "omega", "norm_num", "linarith", "nlinarith", "exact", "apply", "rw", "rcases", "obtain", "induction", "cases"]:
+                if t in stripped:
+                    tactics.append(t)
+    tactics = list(dict.fromkeys(tactics))  # deduplicate, preserve order
+
+    parts = [f"**Question:** {question}", ""]
+    if theorems:
+        parts.append("**Theorem statements:**")
+        for t in theorems[:5]:
+            parts.append(f"- `{t[:200]}`")
+        parts.append("")
+    if tactics:
+        parts.append(f"**Key tactics used:** {', '.join(f'`{t}`' for t in tactics[:10])}")
+        parts.append("")
+    parts.append(f"The proof is {len(lines)} lines of Lean 4 code. See the attached `proof.lean` for the full formalization.")
+    return "\n".join(parts)
+
+
 def format_final_response(status_text: str, result: dict | None) -> str:
     """Format the final response with natural language answer and expandable Lean code."""
     if result is None:
@@ -482,6 +517,11 @@ def format_final_response(status_text: str, result: dict | None) -> str:
     lean_code = result.get("lean_code", "")
     verified = result.get("verified", False)
 
+    # Detect sorry in "verified" code
+    has_sorry = "sorry" in lean_code if lean_code else False
+    if verified and has_sorry:
+        verified = False  # downgrade
+
     parts = []
 
     # Status log (collapsed)
@@ -494,8 +534,15 @@ def format_final_response(status_text: str, result: dict | None) -> str:
 
     # Lean code section
     if lean_code.strip():
-        badge = "Verified" if verified else "Unverified"
-        icon = "&#x2705;" if verified else "&#x26A0;&#xFE0F;"
+        if verified:
+            badge = "Verified"
+            icon = "&#x2705;"
+        elif has_sorry:
+            badge = "Partial — contains sorry"
+            icon = "&#x1F7E1;"
+        else:
+            badge = "Unverified"
+            icon = "&#x26A0;&#xFE0F;"
         parts.append(
             f"\n\n<details open>\n<summary>{icon} Lean 4 Code ({badge})</summary>"
             f"\n\n```lean4\n{lean_code}\n```\n\n</details>"
