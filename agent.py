@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from openai import AsyncOpenAI
 from config import (
     TOKEN_FACTORY_API_KEY,
@@ -24,6 +25,7 @@ from tools import (
     get_aristotle_result,
     TOOL_DEFINITIONS,
 )
+from job_models import JobState, JobPhase
 
 SYSTEM_PROMPT = """\
 You are VeriDeepResearch, a mathematical research assistant that produces VERIFIED answers using Lean 4 and Mathlib.
@@ -38,36 +40,32 @@ You are VeriDeepResearch, a mathematical research assistant that produces VERIFI
 If a statement is FALSE or you suspect it is false:
 1. Say UNAMBIGUOUSLY that the statement is false.
 2. Provide a COUNTEREXAMPLE in natural language.
-3. PROVE THE NEGATION in Lean 4. For example, if asked "Prove that all primes are odd", prove `∃ p, Nat.Prime p ∧ Even p` (namely p=2).
+3. PROVE THE NEGATION in Lean 4.
 4. Verify the negation proof with check_lean_code.
-5. Call final_answer with the negation proof as lean_code and verified=true (if the negation was verified).
-Do NOT just refuse — always try to prove the negation. This is the most valuable thing you can do for a false statement.
+5. Call final_answer with the negation proof as lean_code and verified=true.
 
 ## Workflow
 
 ### Phase 1: Research
 1. Search for relevant theorems with **search_theorems** (arXiv, natural language).
 2. Search Mathlib with **search_lean_library** (by name or natural language).
-3. Search Mathlib by type pattern with **search_loogle** (e.g. "_ + _ = _ + _", "Nat → Nat → Prop").
+3. Search Mathlib by type pattern with **search_loogle** (e.g. "_ + _ = _ + _").
 
-### Phase 2: Fast attempt (try this first)
+### Phase 2: Fast attempt
 Write Lean 4 code yourself and verify with **check_lean_code** (Axle — takes seconds).
-- The code MUST contain at least one `theorem` or `lemma` declaration — not just `example` or `#check`.
+- The code MUST contain at least one `theorem` or `lemma` declaration.
 - If errors: analyze the error, fix, and re-check.
 - If the statement seems false: try proving the NEGATION instead.
-- Note: the system will automatically finalize when Axle returns okay=true AND the code is sorry-free. You don't need to call final_answer yourself after a successful check.
+- Note: the system automatically finalizes when Axle returns okay=true AND the code is sorry-free with theorem/lemma declarations.
 
-### Phase 3: Aristotle + active proving (if fast attempt fails)
+### Phase 3: Aristotle + active proving
 If Axle verification fails after several attempts:
 1. **Submit to Aristotle** — submit the main result as a natural language prompt.
-2. **Keep actively trying** — search more declarations, try different proof strategies, verify with check_lean_code. Don't just wait.
+2. **Keep actively trying** — search more declarations, try different proof strategies, verify with check_lean_code.
 3. **Periodically check Aristotle** with check_aristotle_status.
-4. **If Aristotle returns with sorry**: this is NOT a failure — it's progress. Take Aristotle's output, identify which sub-lemmas still have sorry, and:
-   - Submit EACH sorry'd sub-lemma to Aristotle as a NEW job
-   - Try to prove the sorry'd sub-lemmas yourself
-   - Search Mathlib for the sorry'd statements
-   - Keep iterating until all sorries are filled
-5. If Aristotle completes sorry-free, verify with check_lean_code.
+4. **If Aristotle returns with sorry**: take the output, identify sorry'd sub-lemmas, submit EACH to Aristotle as a new job. Try to prove them yourself too.
+5. **If Aristotle returns sorry-free**: verify with check_lean_code.
+6. Keep iterating until all sorries are filled or budget is exhausted.
 
 ### Phase 4: Final answer
 Call **final_answer** with:
@@ -79,58 +77,26 @@ Call **final_answer** with:
 ## Key principles
 - **NEVER sit idle.** Always be actively trying to prove the result.
 - Write ALL Lean code yourself — you are the prover. Aristotle is your backup.
-- The code MUST contain `theorem` or `lemma` declarations — never just `example`, `#check`, or `sorry`.
-- When Aristotle returns code with sorry, DECOMPOSE the sorry'd lemmas and resubmit. Don't give up.
-- For false statements, PROVE THE NEGATION — don't just refuse.
+- The code MUST contain `theorem` or `lemma` declarations.
+- When Aristotle returns code with sorry, DECOMPOSE and resubmit. Don't give up.
+- For false statements, PROVE THE NEGATION.
 """
 
+TERMINAL_STATUSES = {
+    "COMPLETE", "COMPLETE_WITH_ERRORS", "FAILED",
+    "CANCELED", "OUT_OF_BUDGET",
+}
 
-class CostTracker:
-    def __init__(self, max_cost: float = MAX_COST_PER_QUERY):
-        self.total_cost = 0.0
-        self.max_cost = max_cost
-        self.total_input_tokens = 0
-        self.total_output_tokens = 0
-
-    def add(self, usage) -> float:
-        input_t = usage.prompt_tokens or 0
-        output_t = usage.completion_tokens or 0
-        self.total_input_tokens += input_t
-        self.total_output_tokens += output_t
-        cost = input_t * INPUT_COST_PER_TOKEN + output_t * OUTPUT_COST_PER_TOKEN
-        self.total_cost += cost
-        return cost
-
-    @property
-    def over_budget(self) -> bool:
-        return self.total_cost >= self.max_cost
-
-    def summary(self) -> str:
-        return f"${self.total_cost:.4f} ({self.total_input_tokens} in / {self.total_output_tokens} out)"
-
-
-MAX_TOOL_RESULT_CHARS = 3000  # Truncate tool results beyond this
-MAX_KEEP_RECENT = 30          # Keep last N messages uncompressed
+MAX_TOOL_RESULT_CHARS = 3000
+MAX_KEEP_RECENT = 30
 
 
 def _compress_messages(messages: list[dict]) -> list[dict]:
-    """Compress conversation to fit within context limits.
-
-    Strategy:
-    - Always keep system message (index 0) and user message (index 1).
-    - Keep the last MAX_KEEP_RECENT messages as-is.
-    - For older messages: truncate tool result contents to save space.
-    """
     if len(messages) <= MAX_KEEP_RECENT + 2:
         return messages
-
-    # System + user are always kept
     head = messages[:2]
-    # Recent messages kept as-is
     recent = messages[-MAX_KEEP_RECENT:]
-    # Middle messages: compress tool results
     middle = messages[2:-MAX_KEEP_RECENT]
-
     compressed = []
     for msg in middle:
         if msg.get("role") == "tool":
@@ -140,79 +106,37 @@ def _compress_messages(messages: list[dict]) -> list[dict]:
                 msg["content"] = content[:MAX_TOOL_RESULT_CHARS] + "\n... [truncated]"
             compressed.append(msg)
         elif msg.get("role") == "assistant" and not msg.get("tool_calls"):
-            # Skip pure-thinking assistant messages to save space
             continue
         else:
             compressed.append(msg)
-
     return head + compressed + recent
 
 
-TERMINAL_STATUSES = {
-    "COMPLETE", "COMPLETE_WITH_ERRORS", "FAILED",
-    "CANCELED", "OUT_OF_BUDGET",
-}
-
-
-async def run_agent(question: str):
-    """Run the VeriDeepResearch agent.
-
-    Yields (display_text, final_result_or_none) tuples.
-    """
+async def run_agent_job(job: JobState) -> None:
+    """Run the proof pipeline for a job. Mutates job in place, saves to disk after each step."""
     client = AsyncOpenAI(
         base_url=TOKEN_FACTORY_BASE_URL,
         api_key=TOKEN_FACTORY_API_KEY,
     )
-    import time as _time
-    _start_time = _time.time()
 
-    cost_tracker = CostTracker()
-    status_log: list[str] = []
-    full_log: list[str] = []  # Detailed log with tool contents
-    tool_counts: dict[str, int] = {}  # Count calls per tool
+    # Initialize messages if fresh job
+    if not job.messages:
+        job.messages = [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": job.question},
+        ]
+        job.add_status("Analyzing your question...")
+        job.set_phase(JobPhase.RESEARCHING)
+        job.save()
 
-    def add_status(msg: str):
-        status_log.append(msg)
+    for iteration in range(job.iteration, MAX_AGENT_ITERATIONS):
+        job.iteration = iteration
 
-    def log_detail(msg: str):
-        full_log.append(msg)
-
-    def count_tool(name: str):
-        tool_counts[name] = tool_counts.get(name, 0) + 1
-
-    def render_status():
-        return "\n".join(f"- {s}" for s in status_log)
-
-    def get_full_log():
-        return "\n\n".join(full_log)
-
-    def get_stats() -> dict:
-        elapsed = _time.time() - _start_time
-        return {
-            "elapsed_seconds": round(elapsed, 1),
-            "total_input_tokens": cost_tracker.total_input_tokens,
-            "total_output_tokens": cost_tracker.total_output_tokens,
-            "total_cost_usd": round(cost_tracker.total_cost, 4),
-            "tool_counts": dict(tool_counts),
-        }
-
-    messages: list[dict] = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": question},
-    ]
-
-    add_status("Analyzing your question...")
-    yield render_status(), None
-
-    for _iteration in range(MAX_AGENT_ITERATIONS):
-        if cost_tracker.over_budget:
-            add_status(f"Budget limit reached ({cost_tracker.summary()}).")
-            yield render_status(), None
+        if job.total_cost >= MAX_COST_PER_QUERY:
+            job.add_status(f"Budget limit reached (${job.total_cost:.4f}).")
             break
 
-        # Compress context to avoid overflowing the LLM's context window.
-        # Keep system + user + last 30 messages; summarize older tool results.
-        messages = _compress_messages(messages)
+        messages = _compress_messages(job.messages)
 
         try:
             response = await client.chat.completions.create(
@@ -223,18 +147,22 @@ async def run_agent(question: str):
                 max_tokens=16384,
             )
         except Exception as e:
-            add_status(f"LLM error: {e}")
-            yield render_status(), None
-            return
+            job.add_status(f"LLM error: {e}")
+            job.save()
+            await asyncio.sleep(5)  # brief pause before retry
+            continue
 
         if response.usage:
-            cost_tracker.add(response.usage)
+            inp = response.usage.prompt_tokens or 0
+            out = response.usage.completion_tokens or 0
+            job.total_input_tokens += inp
+            job.total_output_tokens += out
+            job.total_cost += inp * INPUT_COST_PER_TOKEN + out * OUTPUT_COST_PER_TOKEN
 
         choice = response.choices[0]
         assistant_msg = choice.message
 
-        # Append assistant message to history
-        msg_dict: dict = {"role": "assistant", "content": assistant_msg.content or ""}
+        msg_dict = {"role": "assistant", "content": assistant_msg.content or ""}
         if assistant_msg.tool_calls:
             msg_dict["tool_calls"] = [
                 {
@@ -244,13 +172,12 @@ async def run_agent(question: str):
                 }
                 for tc in assistant_msg.tool_calls
             ]
-        messages.append(msg_dict)
+        job.messages.append(msg_dict)
 
         if not assistant_msg.tool_calls:
             if assistant_msg.content:
-                log_detail(f"## Agent thinking\n{assistant_msg.content}")
-            add_status("Thinking...")
-            yield render_status(), None
+                job.add_log(f"## Agent thinking\n{assistant_msg.content}")
+            job.save()
             continue
 
         for tool_call in assistant_msg.tool_calls:
@@ -260,192 +187,127 @@ async def run_agent(question: str):
             except json.JSONDecodeError:
                 fn_args = {}
 
-            count_tool(fn_name)
-            log_detail(f"## Tool call: `{fn_name}`\n**Args:** ```json\n{json.dumps(fn_args, indent=2)[:2000]}\n```")
+            job.tool_counts[fn_name] = job.tool_counts.get(fn_name, 0) + 1
+            _update_phase(job, fn_name)
+            job.add_log(f"## Tool: `{fn_name}`\n**Args:** ```\n{json.dumps(fn_args, indent=2)[:2000]}\n```")
 
-            result = await _handle_tool_call(
-                fn_name, fn_args, add_status, render_status,
-            )
-
-            log_detail(f"**Result:** ```\n{result[:5000]}\n```")
-
-            # final_answer terminates the loop
+            # Handle final_answer
             if fn_name == "final_answer":
-                add_status("Research complete!")
-                fn_args["_full_log"] = get_full_log()
-                fn_args["_stats"] = get_stats()
-                yield render_status(), fn_args
+                job.answer = fn_args.get("answer", "")
+                job.best_lean_code = fn_args.get("lean_code", job.best_lean_code)
+                job.best_code_verified = fn_args.get("verified", False)
+                job.best_code_sorry_free = "sorry" not in job.best_lean_code
+                job.set_phase(JobPhase.COMPLETED)
+                job.finished_at = time.time()
+                job.add_status("Research complete!")
+                job.save()
                 return
 
-            # AUTO-FINALIZE: if check_lean_code returned okay=true AND sorry-free,
-            # force immediate finalization instead of letting the LLM decide.
-            if fn_name == "check_lean_code":
-                try:
-                    parsed = json.loads(result)
-                    if parsed.get("okay"):
-                        code = fn_args.get("code", "")
-                        tool_errors = parsed.get("tool_errors", [])
-                        has_sorry = (
-                            "sorry" in code
-                            or any("sorry" in e for e in tool_errors)
-                        )
-                        has_theorem = any(
-                            line.strip().startswith(("theorem ", "lemma "))
-                            for line in code.split("\n")
-                        )
-                        if has_sorry:
-                            add_status("Lean code compiles but contains `sorry` — proof incomplete, continuing...")
-                        elif not has_theorem:
-                            add_status("Lean code compiles but has no theorem/lemma declarations — continuing...")
-                        else:
-                            add_status("Lean code verified (sorry-free)! Auto-finalizing...")
-                            log_detail("## Auto-finalize: Axle okay=true, no sorry detected")
-                            answer = _generate_fallback_explanation(question, code)
-                            try:
-                                explain_resp = await client.chat.completions.create(
-                                    model=KIMI_MODEL,
-                                    messages=[
-                                        {"role": "system", "content": "Write a clear, concise natural language explanation of this verified Lean 4 proof. Use LaTeX ($...$, $$...$$). Focus on the mathematical content."},
-                                        {"role": "user", "content": f"Question: {question}\n\nVerified Lean 4 code:\n```lean4\n{code[:3000]}\n```"},
-                                    ],
-                                    temperature=0.4,
-                                    max_tokens=2048,
-                                )
-                                if explain_resp.usage:
-                                    cost_tracker.add(explain_resp.usage)
-                                llm_answer = explain_resp.choices[0].message.content
-                                if llm_answer and len(llm_answer) > 20:
-                                    answer = llm_answer
-                            except Exception as e:
-                                log_detail(f"## Explanation generation failed: {e}")
-                            auto_result = {
-                                "answer": answer,
-                                "lean_code": code,
-                                "verified": True,
-                                "_full_log": get_full_log(),
-                                "_stats": get_stats(),
-                            }
-                            yield render_status(), auto_result
-                            return
-                except (json.JSONDecodeError, KeyError):
-                    pass
-
-            yield render_status(), None
-
-            # For wait_for_aristotle, we need special handling with polling
+            # Handle wait_for_aristotle with polling
             if fn_name == "wait_for_aristotle":
-                project_id = fn_args.get("project_id", "")
-                short_id = project_id[:8]
-                max_wait_min = (ARISTOTLE_MAX_POLLS * ARISTOTLE_POLL_INTERVAL) // 60
-                add_status(f"**Waiting for Aristotle** [{short_id}] (timeout: {max_wait_min} min, polling every {ARISTOTLE_POLL_INTERVAL}s)...")
-                yield render_status(), None
-
-                poll_result = None
-                for poll_idx in range(ARISTOTLE_MAX_POLLS):
-                    await asyncio.sleep(ARISTOTLE_POLL_INTERVAL)
-                    info = await check_aristotle_status(project_id)
-
-                    if "error" in info:
-                        poll_result = json.dumps(info)
-                        add_status(f"Aristotle [{short_id}] error: {info['error']}")
-                        yield render_status(), None
-                        break
-
-                    status = info.get("status", "UNKNOWN")
-                    pct = info.get("percent_complete")
-                    elapsed = (poll_idx + 1) * ARISTOTLE_POLL_INTERVAL
-                    elapsed_min = elapsed // 60
-                    elapsed_sec = elapsed % 60
-                    pct_str = f" ({pct}%)" if pct is not None else ""
-                    time_str = f"{elapsed_min}m{elapsed_sec:02d}s" if elapsed_min else f"{elapsed}s"
-                    add_status(f"Aristotle [{short_id}]: {status}{pct_str} — {time_str} elapsed")
-                    yield render_status(), None
-
-                    if status in TERMINAL_STATUSES:
-                        if status in ("COMPLETE", "COMPLETE_WITH_ERRORS"):
-                            add_status(f"Aristotle [{short_id}]: downloading result...")
-                            yield render_status(), None
-                            poll_result = await get_aristotle_result(project_id)
-                        else:
-                            poll_result = f"Aristotle project finished with status: {status}"
-                        break
-
-                if poll_result is None:
-                    total_wait = ARISTOTLE_MAX_POLLS * ARISTOTLE_POLL_INTERVAL
-                    poll_result = f"Aristotle [{short_id}] timed out after {total_wait // 60} minutes"
-                    add_status(f"**Aristotle [{short_id}] timed out** after {total_wait // 60} minutes")
-                    yield render_status(), None
-
-                messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call.id,
-                    "content": poll_result,
-                })
-            else:
-                # Regular tool — result was already computed
-                messages.append({
+                result = await _poll_aristotle(job, fn_args)
+                job.messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
                     "content": result,
                 })
+                job.add_log(f"**Result:** ```\n{result[:5000]}\n```")
+                job.save()
+                continue
 
-    add_status(f"Reached max iterations. Cost: {cost_tracker.summary()}")
-    yield render_status(), None
+            # Execute regular tool
+            result = await _handle_tool_call(fn_name, fn_args, job)
+            job.add_log(f"**Result:** ```\n{result[:5000]}\n```")
+
+            # Auto-finalize if check_lean_code returned okay + sorry-free + has theorem
+            if fn_name == "check_lean_code":
+                auto = await _maybe_auto_finalize(job, fn_args, result, client)
+                if auto:
+                    return
+                _track_best_code(job, fn_args, result)
+
+            job.messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": result,
+            })
+            job.save()
+
+    # Max iterations reached
+    if not job.answer and job.best_lean_code:
+        job.answer = _generate_fallback_explanation(job.question, job.best_lean_code)
+    job.set_phase(JobPhase.COMPLETED if job.best_lean_code else JobPhase.FAILED)
+    job.finished_at = time.time()
+    job.add_status(f"Max iterations reached. Cost: ${job.total_cost:.4f}")
+    job.save()
 
 
-async def _handle_tool_call(fn_name: str, fn_args: dict,
-                            add_status, render_status) -> str:
-    """Execute a non-blocking tool call. Returns the result string.
+def _update_phase(job: JobState, fn_name: str):
+    phase = job.get_phase()
+    if fn_name in ("search_theorems", "search_lean_library", "search_loogle"):
+        if phase in (JobPhase.QUEUED,):
+            job.set_phase(JobPhase.RESEARCHING)
+    elif fn_name == "check_lean_code":
+        if phase in (JobPhase.QUEUED, JobPhase.RESEARCHING):
+            job.set_phase(JobPhase.PROVING_FAST)
+    elif fn_name in ("submit_to_aristotle", "wait_for_aristotle", "check_aristotle_status"):
+        job.set_phase(JobPhase.ARISTOTLE)
 
-    wait_for_aristotle is handled separately in the main loop (needs polling).
-    """
-    if fn_name == "final_answer":
-        return json.dumps(fn_args)
 
+async def _handle_tool_call(fn_name: str, fn_args: dict, job: JobState) -> str:
     if fn_name == "search_theorems":
         query = fn_args.get("query", "")
-        add_status(f'Searching for theorems: "{query}"...')
+        job.add_status(f'Searching for theorems: "{query}"...')
         return await search_theorems(query)
 
     if fn_name == "search_lean_library":
         query = fn_args.get("query", "")
-        add_status(f'Searching Mathlib: "{query}"...')
+        job.add_status(f'Searching Mathlib: "{query}"...')
         return await search_lean_library(query)
 
     if fn_name == "search_loogle":
         query = fn_args.get("query", "")
-        add_status(f'Searching Loogle: "{query}"...')
+        job.add_status(f'Searching Loogle: "{query}"...')
         return await search_loogle(query)
 
     if fn_name == "check_lean_code":
-        add_status("Verifying Lean code with Axle...")
+        job.add_status("Verifying Lean code with Axle...")
         result = await check_lean_code(fn_args.get("code", ""))
         try:
             parsed = json.loads(result)
             if parsed.get("okay"):
-                add_status("Lean code verified successfully!")
+                code = fn_args.get("code", "")
+                has_sorry = "sorry" in code
+                if has_sorry:
+                    job.add_status("Lean code compiles but contains `sorry` — continuing...")
+                else:
+                    job.add_status("Lean code verified successfully!")
             else:
                 n = len(parsed.get("errors", []))
-                add_status(f"Lean code has {n} error(s)")
+                job.add_status(f"Lean code has {n} error(s)")
         except json.JSONDecodeError:
             pass
         return result
 
     if fn_name == "submit_to_aristotle":
         prompt = fn_args.get("prompt", "")
-        # Show a clear summary of what was submitted
-        prompt_preview = prompt[:120].replace("\n", " ").strip()
+        preview = prompt[:120].replace("\n", " ").strip()
         if len(prompt) > 120:
-            prompt_preview += "..."
-        add_status(f'**Submitted to Aristotle:** "{prompt_preview}"')
+            preview += "..."
+        job.add_status(f'**Submitted to Aristotle:** "{preview}"')
         result = await submit_to_aristotle(prompt)
         try:
             parsed = json.loads(result)
             pid = parsed.get("project_id", "")
             if pid:
-                add_status(f"Aristotle job **{pid[:8]}** queued (may take 1-30 min)")
+                job.add_status(f"Aristotle job **{pid[:8]}** queued")
+                job.aristotle_jobs.append({
+                    "project_id": pid,
+                    "prompt_preview": preview,
+                    "status": "SUBMITTED",
+                })
             elif "error" in parsed:
-                add_status(f"Aristotle error: {parsed['error']}")
+                job.add_status(f"Aristotle error: {parsed['error']}")
         except json.JSONDecodeError:
             pass
         return result
@@ -456,25 +318,159 @@ async def _handle_tool_call(fn_name: str, fn_args: dict,
         status = info.get("status", "UNKNOWN")
         pct = info.get("percent_complete")
         pct_str = f" ({pct}%)" if pct is not None else ""
-        add_status(f"Aristotle [{project_id[:8]}]: {status}{pct_str}")
+        job.add_status(f"Aristotle [{project_id[:8]}]: {status}{pct_str}")
+        # Update aristotle_jobs list
+        for aj in job.aristotle_jobs:
+            if aj.get("project_id") == project_id:
+                aj["status"] = status
+                aj["percent_complete"] = pct
         return json.dumps(info)
 
     if fn_name == "get_aristotle_result":
         project_id = fn_args.get("project_id", "")
-        add_status(f"Downloading Aristotle result [{project_id[:8]}]...")
+        job.add_status(f"Downloading Aristotle result [{project_id[:8]}]...")
         return await get_aristotle_result(project_id)
-
-    if fn_name == "wait_for_aristotle":
-        # Handled specially in the main loop; return placeholder here
-        return ""
 
     return json.dumps({"error": f"Unknown tool: {fn_name}"})
 
 
+async def _poll_aristotle(job: JobState, fn_args: dict) -> str:
+    project_id = fn_args.get("project_id", "")
+    short_id = project_id[:8]
+    max_wait_min = (ARISTOTLE_MAX_POLLS * ARISTOTLE_POLL_INTERVAL) // 60
+    job.add_status(f"**Waiting for Aristotle** [{short_id}] (timeout: {max_wait_min} min)...")
+    job.save()
+
+    for poll_idx in range(ARISTOTLE_MAX_POLLS):
+        await asyncio.sleep(ARISTOTLE_POLL_INTERVAL)
+        info = await check_aristotle_status(project_id)
+
+        if "error" in info:
+            job.add_status(f"Aristotle [{short_id}] error: {info['error']}")
+            job.save()
+            return json.dumps(info)
+
+        status = info.get("status", "UNKNOWN")
+        pct = info.get("percent_complete")
+        elapsed = (poll_idx + 1) * ARISTOTLE_POLL_INTERVAL
+        elapsed_min = elapsed // 60
+        elapsed_sec = elapsed % 60
+        pct_str = f" ({pct}%)" if pct is not None else ""
+        time_str = f"{elapsed_min}m{elapsed_sec:02d}s" if elapsed_min else f"{elapsed}s"
+        job.add_status(f"Aristotle [{short_id}]: {status}{pct_str} — {time_str}")
+
+        # Update aristotle_jobs
+        for aj in job.aristotle_jobs:
+            if aj.get("project_id") == project_id:
+                aj["status"] = status
+                aj["percent_complete"] = pct
+
+        job.save()
+
+        if status in TERMINAL_STATUSES:
+            if status in ("COMPLETE", "COMPLETE_WITH_ERRORS"):
+                job.add_status(f"Aristotle [{short_id}]: downloading result...")
+                job.save()
+                return await get_aristotle_result(project_id)
+            return f"Aristotle project finished with status: {status}"
+
+    job.add_status(f"**Aristotle [{short_id}] timed out** after {max_wait_min} minutes")
+    job.save()
+    return f"Aristotle [{short_id}] timed out"
+
+
+async def _maybe_auto_finalize(
+    job: JobState, fn_args: dict, result: str, client: AsyncOpenAI
+) -> bool:
+    """If check_lean_code returned okay + sorry-free + has theorem, auto-finalize. Returns True if finalized."""
+    try:
+        parsed = json.loads(result)
+        if not parsed.get("okay"):
+            return False
+
+        code = fn_args.get("code", "")
+        tool_errors = parsed.get("tool_errors", [])
+        has_sorry = "sorry" in code or any("sorry" in e for e in tool_errors)
+        has_theorem = any(
+            line.strip().startswith(("theorem ", "lemma "))
+            for line in code.split("\n")
+        )
+
+        if has_sorry:
+            return False
+        if not has_theorem:
+            job.add_status("Code compiles but has no theorem/lemma — continuing...")
+            return False
+
+        job.add_status("Lean code verified (sorry-free)! Finalizing...")
+        job.add_log("## Auto-finalize: okay=true, sorry-free, has theorem")
+
+        # Generate explanation
+        answer = _generate_fallback_explanation(job.question, code)
+        try:
+            resp = await client.chat.completions.create(
+                model=KIMI_MODEL,
+                messages=[
+                    {"role": "system", "content": "Write a clear, concise natural language explanation of this verified Lean 4 proof. Use LaTeX ($...$, $$...$$). Focus on the mathematical content."},
+                    {"role": "user", "content": f"Question: {job.question}\n\nVerified Lean 4 code:\n```lean4\n{code[:3000]}\n```"},
+                ],
+                temperature=0.4,
+                max_tokens=2048,
+            )
+            if resp.usage:
+                inp = resp.usage.prompt_tokens or 0
+                out = resp.usage.completion_tokens or 0
+                job.total_input_tokens += inp
+                job.total_output_tokens += out
+                job.total_cost += inp * INPUT_COST_PER_TOKEN + out * OUTPUT_COST_PER_TOKEN
+            llm_answer = resp.choices[0].message.content
+            if llm_answer and len(llm_answer) > 20:
+                answer = llm_answer
+        except Exception as e:
+            job.add_log(f"## Explanation generation failed: {e}")
+
+        job.answer = answer
+        job.best_lean_code = code
+        job.best_code_verified = True
+        job.best_code_sorry_free = True
+        job.set_phase(JobPhase.COMPLETED)
+        job.finished_at = time.time()
+        job.add_status("Research complete!")
+        job.save()
+        return True
+
+    except (json.JSONDecodeError, KeyError):
+        return False
+
+
+def _track_best_code(job: JobState, fn_args: dict, result: str):
+    try:
+        parsed = json.loads(result)
+        code = fn_args.get("code", "")
+        if not parsed.get("okay"):
+            return
+        has_theorem = any(
+            line.strip().startswith(("theorem ", "lemma "))
+            for line in code.split("\n")
+        )
+        if not has_theorem:
+            return
+        has_sorry = "sorry" in code
+        if not has_sorry:
+            job.best_lean_code = code
+            job.best_code_verified = True
+            job.best_code_sorry_free = True
+        elif not job.best_code_verified:
+            job.best_lean_code = code
+            job.best_code_verified = True
+            job.best_code_sorry_free = False
+    except (json.JSONDecodeError, KeyError):
+        pass
+
+
 def _generate_fallback_explanation(question: str, lean_code: str) -> str:
-    """Generate a basic explanation from the Lean code when the LLM call fails."""
     lines = lean_code.strip().split("\n")
-    theorems = [l.strip() for l in lines if l.strip().startswith(("theorem ", "lemma ", "example "))]
+    theorems = [l.strip() for l in lines if l.strip().startswith(("theorem ", "lemma "))]
     tactics = []
     for l in lines:
         stripped = l.strip()
@@ -482,7 +478,7 @@ def _generate_fallback_explanation(question: str, lean_code: str) -> str:
             for t in ["simp", "ring", "omega", "norm_num", "linarith", "nlinarith", "exact", "apply", "rw", "rcases", "obtain", "induction", "cases"]:
                 if t in stripped:
                     tactics.append(t)
-    tactics = list(dict.fromkeys(tactics))  # deduplicate, preserve order
+    tactics = list(dict.fromkeys(tactics))
 
     parts = [f"**Question:** {question}", ""]
     if theorems:
@@ -495,50 +491,3 @@ def _generate_fallback_explanation(question: str, lean_code: str) -> str:
         parts.append("")
     parts.append(f"The proof is {len(lines)} lines of Lean 4 code. See the attached `proof.lean` for the full formalization.")
     return "\n".join(parts)
-
-
-def format_final_response(status_text: str, result: dict | None) -> str:
-    """Format the final response with natural language answer and expandable Lean code."""
-    if result is None:
-        return (
-            status_text
-            + "\n\nI was unable to complete the research. "
-            "Please try rephrasing your question or asking something simpler."
-        )
-
-    answer = result.get("answer", "No answer provided.")
-    lean_code = result.get("lean_code", "")
-    verified = result.get("verified", False)
-
-    # Detect sorry in "verified" code
-    has_sorry = "sorry" in lean_code if lean_code else False
-    if verified and has_sorry:
-        verified = False  # downgrade
-
-    parts = []
-
-    # Status log (collapsed)
-    parts.append(
-        f"<details>\n<summary>Research log</summary>\n\n{status_text}\n\n</details>\n"
-    )
-
-    # Main answer
-    parts.append(answer)
-
-    # Lean code section
-    if lean_code.strip():
-        if verified:
-            badge = "Verified"
-            icon = "&#x2705;"
-        elif has_sorry:
-            badge = "Partial — contains sorry"
-            icon = "&#x1F7E1;"
-        else:
-            badge = "Unverified"
-            icon = "&#x26A0;&#xFE0F;"
-        parts.append(
-            f"\n\n<details open>\n<summary>{icon} Lean 4 Code ({badge})</summary>"
-            f"\n\n```lean4\n{lean_code}\n```\n\n</details>"
-        )
-
-    return "\n\n".join(parts)

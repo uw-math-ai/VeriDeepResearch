@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>All Jobs — VeriDeepResearch</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+  .container { max-width: 900px; margin: 30px auto; padding: 0 20px; }
+  h1 { font-size: 22px; margin-bottom: 16px; }
+  .nav { font-size: 13px; margin-bottom: 16px; }
+  .nav a { color: #4a90d9; }
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+  th { background: #f8f8f8; text-align: left; padding: 10px 12px; font-size: 13px; font-weight: 600; color: #555; }
+  td { padding: 10px 12px; font-size: 13px; border-top: 1px solid #eee; }
+  td a { color: #4a90d9; text-decoration: none; }
+  td a:hover { text-decoration: underline; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; text-transform: uppercase; }
+  .badge-queued { background: #e8e8e8; color: #666; }
+  .badge-researching, .badge-proving_fast { background: #e3f2fd; color: #1565c0; }
+  .badge-aristotle, .badge-decomposing { background: #fff3e0; color: #e65100; }
+  .badge-completed { background: #c8e6c9; color: #1b5e20; }
+  .badge-failed { background: #ffcdd2; color: #b71c1c; }
+  .empty { text-align: center; padding: 40px; color: #888; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="nav"><a href="/">← New question</a></div>
+  <h1>All Jobs</h1>
+
+  {% if jobs %}
+  <table>
+    <thead>
+      <tr><th>ID</th><th>Question</th><th>Phase</th><th>Verified</th><th>Cost</th><th>Time</th></tr>
+    </thead>
+    <tbody>
+      {% for j in jobs %}
+      <tr>
+        <td><a href="/job/{{ j.job_id }}"><code>{{ j.job_id }}</code></a></td>
+        <td><a href="/job/{{ j.job_id }}">{{ j.question[:80] }}{% if j.question|length > 80 %}...{% endif %}</a></td>
+        <td><span class="badge badge-{{ j.phase }}">{{ j.phase }}</span></td>
+        <td>{% if j.best_code_verified and j.best_code_sorry_free %}✅{% elif j.best_code_verified %}🟡{% else %}—{% endif %}</td>
+        <td>${{ "%.4f"|format(j.total_cost) }}</td>
+        <td>{{ j.elapsed_str() }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div class="empty">No jobs yet. <a href="/">Submit a question</a> to get started.</div>
+  {% endif %}
+</div>
+</body>
+</html>

@@ -1,89 +1,103 @@
-import traceback
-import gradio as gr
-from agent import run_agent, format_final_response
-from email_sender import send_result_email
+from __future__ import annotations
+
+import asyncio
+from fastapi import FastAPI, Form, Request
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, PlainTextResponse
+from fastapi.templating import Jinja2Templates
+from job_models import JobState, JobPhase
+from worker import WorkerManager
+
+app = FastAPI(title="VeriDeepResearch")
+templates = Jinja2Templates(directory="templates")
+worker_manager: WorkerManager | None = None
 
 
-EXAMPLES = [
-    ["Prove that the sum of two even numbers is even."],
-    ["Is the square root of 2 irrational?"],
-    ["Prove that there are infinitely many prime numbers."],
-    ["Show that for all natural numbers n, n + 0 = n."],
-    ["Prove that the composition of two injective functions is injective."],
-]
-
-LATEX_DELIMITERS = [
-    {"left": "$$", "right": "$$", "display": True},
-    {"left": "$", "right": "$", "display": False},
-]
+@app.on_event("startup")
+async def startup():
+    global worker_manager
+    worker_manager = WorkerManager(max_concurrent=2)
+    asyncio.create_task(worker_manager.run())
 
 
-async def respond(message, history, email):
-    """Handle a user message. Streams progress, then delivers final answer."""
-    if not message or not message.strip():
-        yield "Please enter a mathematical question."
-        return
-
-    try:
-        status_text = ""
-        final_result = None
-
-        async for status, result in run_agent(message):
-            status_text = status
-            if result is not None:
-                final_result = result
-            yield status_text
-
-        formatted = format_final_response(status_text, final_result)
-        yield formatted
-
-        # Send email if provided
-        if email and email.strip() and "@" in email:
-            answer = final_result.get("answer", "") if final_result else ""
-            lean_code = final_result.get("lean_code", "") if final_result else ""
-            verified = final_result.get("verified", False) if final_result else False
-            full_log = final_result.get("_full_log", "") if final_result else ""
-            stats = final_result.get("_stats") if final_result else None
-            sent = send_result_email(
-                to_email=email.strip(),
-                question=message,
-                status_log=status_text,
-                full_log=full_log,
-                answer=answer,
-                lean_code=lean_code,
-                verified=verified,
-                stats=stats,
-            )
-            if sent:
-                yield formatted + "\n\n---\n*Results sent to " + email.strip() + "*"
-
-    except Exception as e:
-        tb = traceback.format_exc()
-        yield f"An error occurred:\n```\n{tb}\n```"
+# --- Submit form ---
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
 
-demo = gr.ChatInterface(
-    fn=respond,
-    title="VeriDeepResearch",
-    description=(
-        "Ask a mathematical question and get a verified answer. "
-        "The answer is formalized in Lean 4 and checked by a proof verifier. "
-        "Optionally enter your email to be notified when long-running proofs complete."
-    ),
-    examples=EXAMPLES,
-    additional_inputs=[
-        gr.Textbox(
-            label="Email (optional)",
-            placeholder="your@email.com — get notified when done",
-            type="email",
-        ),
-    ],
-    chatbot=gr.Chatbot(
-        height=600,
-        latex_delimiters=LATEX_DELIMITERS,
-    ),
-)
+@app.post("/submit")
+async def submit_job(
+    question: str = Form(...),
+    email: str = Form(""),
+):
+    question = question.strip()
+    if not question:
+        return RedirectResponse("/", status_code=303)
+    job = JobState.create(question, email=email.strip() if email.strip() else None)
+    job.save()
+    return RedirectResponse(f"/job/{job.job_id}", status_code=303)
 
 
-if __name__ == "__main__":
-    demo.launch()
+# --- Job status page ---
+@app.get("/job/{job_id}", response_class=HTMLResponse)
+async def job_status_page(request: Request, job_id: str):
+    job = JobState.load(job_id)
+    if not job:
+        return HTMLResponse("Job not found", status_code=404)
+    return templates.TemplateResponse("status.html", {"request": request, "job": job})
+
+
+# --- JSON API for polling ---
+@app.get("/api/job/{job_id}")
+async def job_api(job_id: str):
+    job = JobState.load(job_id)
+    if not job:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({
+        "job_id": job.job_id,
+        "phase": job.phase,
+        "question": job.question,
+        "status_log": job.status_log[-50:],  # last 50 entries
+        "best_lean_code": job.best_lean_code,
+        "best_code_verified": job.best_code_verified,
+        "best_code_sorry_free": job.best_code_sorry_free,
+        "answer": job.answer,
+        "iteration": job.iteration,
+        "total_cost": round(job.total_cost, 4),
+        "total_input_tokens": job.total_input_tokens,
+        "total_output_tokens": job.total_output_tokens,
+        "tool_counts": job.tool_counts,
+        "aristotle_jobs": job.aristotle_jobs,
+        "error": job.error,
+        "created_at": job.created_at,
+        "started_at": job.started_at,
+        "finished_at": job.finished_at,
+        "elapsed": job.elapsed_str(),
+    })
+
+
+# --- List all jobs ---
+@app.get("/jobs", response_class=HTMLResponse)
+async def list_jobs(request: Request):
+    jobs = JobState.list_all()
+    return templates.TemplateResponse("jobs.html", {"request": request, "jobs": jobs})
+
+
+# --- Download proof ---
+@app.get("/job/{job_id}/proof.lean")
+async def download_proof(job_id: str):
+    job = JobState.load(job_id)
+    if not job or not job.best_lean_code:
+        return PlainTextResponse("Not available", status_code=404)
+    return PlainTextResponse(
+        job.best_lean_code,
+        headers={"Content-Disposition": f"attachment; filename=proof_{job_id}.lean"},
+    )
+
+
+# --- Worker status ---
+@app.get("/api/worker")
+async def worker_status():
+    if worker_manager:
+        return JSONResponse(worker_manager.status())
+    return JSONResponse({"error": "worker not started"})
