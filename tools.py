@@ -313,11 +313,13 @@ TOOL_DEFINITIONS = [
                 "Aristotle proves graduate/research-level math in Lean 4. "
                 "Returns a project_id immediately — use check_aristotle_status or "
                 "wait_for_aristotle to get results later.\n\n"
-                "SUBMIT MULTIPLE JOBS with different formulations:\n"
-                "- The main result as a natural language prompt\n"
-                "- Sub-lemmas that the result decomposes into\n"
-                "- Lean code with sorry: 'Fill in the sorries:\\n```lean\\n...\\n```'\n"
-                "- Different proof strategies\n\n"
+                "PREFERRED FORMAT: Lean 4 code with sorry placeholders. This preserves "
+                "the exact theorem signature and lets Aristotle focus on filling proofs:\n"
+                "  'Fill in the sorries:\\n```lean\\nimport Mathlib\\n\\ntheorem my_thm ... := by\\n  sorry\\n```'\n\n"
+                "ALTERNATIVE FORMATS (when you don't have a Lean statement yet):\n"
+                "- Natural language description of the result to prove\n"
+                "- Sub-lemmas that the result decomposes into\n\n"
+                "SUBMIT MULTIPLE JOBS for different sub-lemmas or strategies.\n"
                 "After submitting, continue researching — do NOT wait immediately."
             ),
             "parameters": {
@@ -326,8 +328,8 @@ TOOL_DEFINITIONS = [
                     "prompt": {
                         "type": "string",
                         "description": (
-                            "Instructions for Aristotle. Can be natural language, "
-                            "or include Lean code with sorry placeholders."
+                            "PREFERRED: Lean 4 code with `sorry` in place of proofs. "
+                            "ALTERNATIVE: Natural language description of the theorem to prove."
                         ),
                     }
                 },

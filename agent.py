@@ -82,6 +82,24 @@ Call **final_answer** with:
 - For false statements, PROVE THE NEGATION.
 """
 
+SELF_REVIEW_PROMPT = """\
+You are a mathematical proof reviewer. You will receive:
+1. An original mathematical question.
+2. Lean 4 code that compiles without errors and without sorry.
+
+Your task: determine whether the Lean 4 code **actually proves the main claim** in the question.
+
+Rules:
+- The code must contain a theorem or lemma whose STATEMENT directly corresponds to the question.
+- Helper lemmas alone are NOT sufficient — the main claim must be stated and proved.
+- A proof of a weaker or tangential result is a FAIL.
+- If the question asks to "prove X", the code must contain a theorem that states X (or an equivalent formulation).
+- If the question asks to "find X", the code must exhibit X and prove it satisfies the required properties.
+
+Respond with a brief analysis (2-3 sentences) followed by:
+**Verdict: PASS** or **Verdict: FAIL**
+"""
+
 TERMINAL_STATUSES = {
     "COMPLETE", "COMPLETE_WITH_ERRORS", "FAILED",
     "CANCELED", "OUT_OF_BUDGET",
@@ -382,7 +400,11 @@ async def _poll_aristotle(job: JobState, fn_args: dict) -> str:
 async def _maybe_auto_finalize(
     job: JobState, fn_args: dict, result: str, client: AsyncOpenAI
 ) -> bool:
-    """If check_lean_code returned okay + sorry-free + has theorem, auto-finalize. Returns True if finalized."""
+    """If check_lean_code returned okay + sorry-free + has theorem, run self-review then finalize.
+
+    The self-review asks the LLM (with clean context) whether the Lean code
+    actually proves the claim in the original question, not just a tangential lemma.
+    """
     try:
         parsed = json.loads(result)
         if not parsed.get("okay"):
@@ -402,8 +424,63 @@ async def _maybe_auto_finalize(
             job.add_status("Code compiles but has no theorem/lemma — continuing...")
             return False
 
-        job.add_status("Lean code verified (sorry-free)! Finalizing...")
-        job.add_log("## Auto-finalize: okay=true, sorry-free, has theorem")
+        # --- Self-review: does this code actually answer the question? ---
+        job.add_status("Lean code verified (sorry-free)! Running self-review...")
+        job.add_log("## Self-review: checking if proof answers the original question")
+
+        review_passed = True  # default to pass if review fails
+        try:
+            review_resp = await client.chat.completions.create(
+                model=KIMI_MODEL,
+                messages=[
+                    {"role": "system", "content": SELF_REVIEW_PROMPT},
+                    {"role": "user", "content": f"## Original question\n{job.question}\n\n## Lean 4 code (compiles, sorry-free)\n```lean4\n{code[:4000]}\n```"},
+                ],
+                temperature=0.2,
+                max_tokens=1024,
+            )
+            if review_resp.usage:
+                inp = review_resp.usage.prompt_tokens or 0
+                out = review_resp.usage.completion_tokens or 0
+                job.total_input_tokens += inp
+                job.total_output_tokens += out
+                job.total_cost += inp * INPUT_COST_PER_TOKEN + out * OUTPUT_COST_PER_TOKEN
+            review_text = (review_resp.choices[0].message.content or "").strip()
+            job.add_log(f"## Self-review result\n{review_text}")
+
+            # Parse verdict: look for PASS or FAIL
+            verdict_lower = review_text.lower()
+            if "verdict: fail" in verdict_lower or "**fail**" in verdict_lower:
+                review_passed = False
+                job.add_status("Self-review FAILED — proof doesn't fully answer the question. Continuing...")
+                job.add_log("## Self-review: FAIL — continuing to improve proof")
+            elif "verdict: pass" in verdict_lower or "**pass**" in verdict_lower:
+                review_passed = True
+                job.add_status("Self-review PASSED — proof addresses the question.")
+            else:
+                # Ambiguous — check for negative signals
+                if any(w in verdict_lower for w in ["does not prove", "doesn't prove", "tangential", "helper lemma only", "not the main claim"]):
+                    review_passed = False
+                    job.add_status("Self-review indicates incomplete proof. Continuing...")
+                else:
+                    review_passed = True
+                    job.add_status("Self-review passed (no objections).")
+
+        except Exception as e:
+            job.add_log(f"## Self-review failed (error): {e}")
+            job.add_status("Self-review error — finalizing anyway.")
+
+        if not review_passed:
+            # Don't finalize — inject review feedback as a user message
+            # so the agent knows to keep working on the actual claim
+            job.messages.append({
+                "role": "user",
+                "content": "SELF-REVIEW RESULT: Your Lean code compiles and is sorry-free, but it does NOT fully prove the main claim from the original question. It only proves helper lemmas or tangential results. You MUST formalize and prove the MAIN CLAIM. Keep working.",
+            })
+            return False
+
+        # --- Review passed: finalize ---
+        job.add_log("## Auto-finalize: okay=true, sorry-free, has theorem, self-review passed")
 
         # Generate explanation
         answer = _generate_fallback_explanation(job.question, code)

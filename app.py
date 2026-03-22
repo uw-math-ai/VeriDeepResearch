@@ -15,7 +15,7 @@ worker_manager: WorkerManager | None = None
 @app.on_event("startup")
 async def startup():
     global worker_manager
-    worker_manager = WorkerManager(max_concurrent=2)
+    worker_manager = WorkerManager(max_concurrent=3)
     asyncio.create_task(worker_manager.run())
 
 

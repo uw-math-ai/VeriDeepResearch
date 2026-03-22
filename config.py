@@ -28,4 +28,4 @@ LEAN_EXPLORE_BASE_URL = "https://www.leanexplore.com/api"
 THEOREM_SEARCH_BASE_URL = "https://api.theoremsearch.com"
 
 # Agent settings
-MAX_AGENT_ITERATIONS = 50
+MAX_AGENT_ITERATIONS = 500
