@@ -182,3 +182,48 @@ All 6 emails from iterations 1-3 reviewed:
 2. Iter 2: Non-blocking Aristotle (9x throughput)
 3. Iter 3: Strict self-review (extract theorem statements)
 4. Iter 4: Submit to Aristotle early + error categorization
+
+## Iteration 5 — 2026-03-23 03:15 PDT
+
+### Focus: Validation + Deployment
+
+Ran comprehensive tests to validate all 4 iterations of improvements working together, then deployed to HuggingFace.
+
+### Test Results
+
+| Problem | Time | Cost | Status | Notes |
+|---------|------|------|--------|-------|
+| Infinite primes | 34s | $0.01 | VERIFIED | `Nat.infinite_setOf_prime` |
+| AM-GM (abc=1 → a+b+c≥3) | 50s | $0.05 | VERIFIED | Found `geom_mean_le_arith_mean3_weighted`! |
+| "Capital of France?" | 0s | $0.00 | Rejected | Polite refusal, 0 iterations |
+| n²+n is even (HF Space) | ~30s | $0.01 | VERIFIED | `Nat.even_mul_succ_self` — deployed on HF! |
+
+**Highlight:** AM-GM proof is the most sophisticated verified result yet — agent found the exact weighted AM-GM lemma in Mathlib, applied it with 1/3 weights, used the abc=1 constraint, and derived the bound. 6 iterations, 50 seconds.
+
+### HuggingFace Deployment
+- Pushed all improvements (iters 1-4) to HF Space
+- Space is RUNNING at `vilin97-verideepresearch.hf.space`
+- Verified end-to-end: submit → prove → self-review → email
+- All secrets configured via HF Space settings
+
+### Overall System Performance (14 jobs total)
+
+| Category | Count | Examples |
+|----------|-------|---------|
+| Verified (legitimate) | 4 | sum formula, sqrt(2), infinite primes, AM-GM |
+| Verified (pre-strict-review) | 4 | A1, B1, B3, A3 (would be rejected now) |
+| Partial (sorry) | 5 | A2, B2, B4, B3v2, B1v2 |
+| Rejected (non-math) | 1 | "Capital of France?" |
+
+Total cost across all 14 jobs: $8.54
+
+### No code changes this iteration
+All improvements from iterations 1-4 are validated and deployed. The system is stable and performant.
+
+### Current capability tiers
+1. **Mathlib lookup** (<30s, $0.01): Problems with direct Mathlib solutions
+2. **Mathlib composition** (<60s, $0.05): Problems requiring combining lemmas
+3. **Competition level** (10-200min, $0.5-2): Good NL explanation, Lean proof usually has sorry
+
+### Biggest remaining opportunity
+Replace Kimi K2.5 orchestrator with a model better at Lean code generation (e.g., Claude or a fine-tuned model). The mathematical reasoning is solid but Lean syntax is the bottleneck. This is a fundamental capability change, not an architectural one.
