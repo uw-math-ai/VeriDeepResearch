@@ -227,3 +227,51 @@ All improvements from iterations 1-4 are validated and deployed. The system is s
 
 ### Biggest remaining opportunity
 Replace Kimi K2.5 orchestrator with a model better at Lean code generation (e.g., Claude or a fine-tuned model). The mathematical reasoning is solid but Lean syntax is the bottleneck. This is a fundamental capability change, not an architectural one.
+
+## Iteration 6 — 2026-03-23 07:30 PDT
+
+### Diagnosis
+A4 (Putnam matrix commutativity) was "verified" with `theorem ... : True := by trivial` — the self-review LLM (Kimi K2.5) failed to catch a theorem whose conclusion is literally `True`. This is the most trivially vacuous proof possible, yet the LLM-based self-review passed it.
+
+### Fix: Programmatic vacuous proof detection (HIGH IMPACT)
+
+Added `_is_vacuous_proof()` — a code-level pre-check that runs BEFORE the LLM self-review. Catches:
+1. **Theorem conclusion is `True` or `⊤`** — e.g., `theorem foo : True := by trivial`
+2. **Mod-k tautologies** — e.g., `(n%4=0 ∨ n%4=1) ∨ (n%4=2 ∨ n%4=3)` (the A3 pattern)
+3. Works with multi-line declarations (joins continuation lines)
+
+Test matrix (all pass):
+| Code | Expected | Result |
+|------|----------|--------|
+| A4's `True := by trivial` | vacuous | ✓ caught |
+| Inline `True` | vacuous | ✓ caught |
+| Mod-4 tautology (A3 pattern) | vacuous | ✓ caught |
+| Sum formula | legitimate | ✓ passed |
+| AM-GM inequality | legitimate | ✓ passed |
+| sqrt(2) irrational | legitimate | ✓ passed |
+
+When vacuous proof is detected, the agent gets a message: "Your proof is VACUOUS — the theorem conclusion is trivially true. You must state a theorem whose TYPE encodes the actual mathematical claim."
+
+### Test Results
+
+| Problem | Time | Cost | Status | Notes |
+|---------|------|------|--------|-------|
+| A4 (matrix commutativity) | 3m | $0.06 | "Verified" (pre-fix) | `True := by trivial` — NOW caught |
+| B6 (functional equation) | 4.5m | $0.20 | VERIFIED | Proved r=1/4 works with g(n)=n² |
+| n³-n divisible by 6 | 6.5m | $0.69 | VERIFIED | Case analysis mod 6, legitimate |
+
+B6 is notable — it's a hard Putnam problem (B6!) and the agent found a legitimate existence result (g(n)=n² satisfies the inequality with r=1/4). The self-review correctly passed it.
+
+### Code Changes
+- `agent.py`: Added `_is_vacuous_proof()` programmatic pre-check, integrated before LLM self-review in `_maybe_auto_finalize()`
+
+### Cumulative improvements
+1. Iter 1: Context overflow fix + self-review gate
+2. Iter 2: Non-blocking Aristotle (9x throughput)
+3. Iter 3: Strict self-review (extract theorem statements)
+4. Iter 4: Submit to Aristotle early + error categorization
+5. Iter 5: Validation + HF deployment
+6. Iter 6: Programmatic vacuous proof detection (True, mod-k tautologies)
+
+### Verified results so far (legitimate)
+sum formula (19s), sqrt(2) (14s), infinite primes (34s), AM-GM (50s), n²+n even (30s), B6 functional eq (4.5m), n³-n div 6 (6.5m)

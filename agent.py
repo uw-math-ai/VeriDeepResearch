@@ -124,6 +124,41 @@ Respond with:
 3. **Verdict: PASS** or **Verdict: FAIL**
 """
 
+def _is_vacuous_proof(code: str) -> bool:
+    """Detect proofs whose theorem conclusion is trivially true (True, tauto, etc.)."""
+    import re
+    # Normalize: join continuation lines (indented lines) into previous line
+    normalized = re.sub(r'\n\s+', ' ', code)
+
+    for line in normalized.split("\n"):
+        stripped = line.strip()
+        if not re.match(r'(?:theorem|lemma)\s', stripped):
+            continue
+        # Check if the conclusion (text between last standalone `:` and `:=`) is True
+        # Find `:= by` or `:= trivial` etc.
+        assign_match = re.search(r':=\s*(?:by\b|trivial|tauto|True\.intro)', stripped)
+        if not assign_match:
+            continue
+        before_assign = stripped[:assign_match.start()].rstrip()
+        # The conclusion is after the LAST `:` that's not inside parens/brackets
+        # Simple heuristic: split on ` : ` (with spaces) and take the last part
+        parts = re.split(r'\)\s*:', before_assign)
+        if len(parts) >= 2:
+            conclusion = parts[-1].strip()
+        else:
+            # Try splitting on `: `
+            parts2 = before_assign.rsplit(': ', 1)
+            conclusion = parts2[-1].strip() if len(parts2) >= 2 else ""
+
+        if conclusion in ("True", "⊤"):
+            return True
+        # Check for mod-tautologies: (n%k=0 ∨ n%k=1) ∨ (n%k=2 ∨ n%k=3)
+        if re.fullmatch(r'[\s\(\)∨∧]*(?:\w+\s*%\s*\d+\s*=\s*\d+[\s\(\)∨∧]*)+', conclusion):
+            return True
+
+    return False
+
+
 def _summarize_lean_errors(errors: list) -> str:
     """Produce a short summary of Lean error types for status messages."""
     if not errors:
@@ -473,6 +508,16 @@ async def _maybe_auto_finalize(
             return False
         if not has_theorem:
             job.add_status("Code compiles but has no theorem/lemma — continuing...")
+            return False
+
+        # --- Programmatic pre-check: catch obviously vacuous proofs ---
+        if _is_vacuous_proof(code):
+            job.add_status("Proof is vacuous (trivial conclusion) — continuing...")
+            job.add_log("## Pre-check: vacuous proof detected (True, trivial, tauto)")
+            job.messages.append({
+                "role": "user",
+                "content": "SELF-REVIEW RESULT: Your proof is VACUOUS — the theorem conclusion is trivially true (e.g., `True`, proved by `trivial`/`tauto`). This does NOT prove anything about the original question. You must state a theorem whose TYPE encodes the actual mathematical claim.",
+            })
             return False
 
         # --- Self-review: does this code actually answer the question? ---
