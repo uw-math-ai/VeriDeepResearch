@@ -275,3 +275,40 @@ B6 is notable — it's a hard Putnam problem (B6!) and the agent found a legitim
 
 ### Verified results so far (legitimate)
 sum formula (19s), sqrt(2) (14s), infinite primes (34s), AM-GM (50s), n²+n even (30s), B6 functional eq (4.5m), n³-n div 6 (6.5m)
+
+## Iteration 7 — 2026-03-23 10:00 PDT
+
+### Diagnosis
+Two issues found:
+1. **Non-math rejection emails said "UNVERIFIED"** instead of "REJECTED", showed stats and empty Lean code section
+2. **A4 (Putnam) slipped through self-review** with `theorem : True := by trivial` — LLM reviewer failed to catch the most trivially vacuous proof
+
+### Fixes
+
+**1. Programmatic vacuous proof detection (from iter 6, validated)**
+- Catches `True`, `⊤`, and mod-k tautologies before LLM review even runs
+- Tested against 6 cases: 3 vacuous caught, 3 legitimate passed
+
+**2. Email quality for rejections**
+- Added `is_rejection` detection with expanded phrase matching
+- Rejection emails now show:
+  - Badge: "REJECTED (not a math question)" in red
+  - No stats section (no unnecessary cost/token info)
+  - No empty Lean code section
+  - Appropriate footer (no "Lean code attached")
+
+### Test Results
+
+| Problem | Time | Cost | Status | Notes |
+|---------|------|------|--------|-------|
+| "Write me a poem" | 0s | $0.00 | REJECTED | Clean rejection, no stats noise |
+| A5 (permutation counting) | 4m | $0.31 | VERIFIED | 150+ line proof! Classification of alternating sequences |
+
+A5 proof defines `IsAlternating`, `s_up_down`, `s_down_up` and proves the iff classification via structural induction on the index. This is mathematically substantial (not a tautology) — a real structural lemma needed for the full result, though it doesn't prove the maximization of f(s).
+
+### Code Changes
+- `email_sender.py`: Added `is_rejection` detection, conditional stats/code sections, red badge for rejections, expanded phrase matching
+- `agent.py`: `_is_vacuous_proof()` (from iter 6)
+
+### Verified proof count: 8 legitimate
+sum formula, sqrt(2), infinite primes, AM-GM, n²+n even, B6, n³-n div 6, A5 alternating sequences
