@@ -109,6 +109,31 @@ MAX_TOOL_RESULT_CHARS = 3000
 MAX_KEEP_RECENT = 30
 
 
+def _hard_reset_messages(job: JobState):
+    """Nuclear option: discard conversation history, keep only system + question + best code context."""
+    fresh = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": job.question},
+    ]
+    if job.best_lean_code:
+        status = "sorry-free" if job.best_code_sorry_free else "contains sorry"
+        fresh.append({
+            "role": "user",
+            "content": (
+                f"CONTEXT RESET: Previous conversation exceeded context limits.\n"
+                f"Best Lean code so far ({status}):\n```lean4\n{job.best_lean_code[:4000]}\n```\n"
+                f"Continue improving this proof. If it has sorry, fill them in. "
+                f"If it doesn't fully prove the claim, fix the theorem statement."
+            ),
+        })
+    else:
+        fresh.append({
+            "role": "user",
+            "content": "CONTEXT RESET: Previous conversation exceeded context limits. Start fresh.",
+        })
+    job.messages = fresh
+
+
 def _compress_messages(messages: list[dict]) -> list[dict]:
     if len(messages) <= MAX_KEEP_RECENT + 2:
         return messages
@@ -147,6 +172,9 @@ async def run_agent_job(job: JobState) -> None:
         job.set_phase(JobPhase.RESEARCHING)
         job.save()
 
+    consecutive_errors = 0
+    MAX_CONSECUTIVE_ERRORS = 3
+
     for iteration in range(job.iteration, MAX_AGENT_ITERATIONS):
         job.iteration = iteration
 
@@ -164,10 +192,20 @@ async def run_agent_job(job: JobState) -> None:
                 temperature=0.6,
                 max_tokens=16384,
             )
+            consecutive_errors = 0  # reset on success
         except Exception as e:
+            consecutive_errors += 1
+            if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
+                # Context is likely too large — hard reset
+                job.add_status("Context overflow detected — resetting conversation.")
+                job.add_log("## Hard context reset after repeated LLM errors")
+                _hard_reset_messages(job)
+                consecutive_errors = 0
+                job.save()
+                continue
             job.add_status(f"LLM error: {e}")
             job.save()
-            await asyncio.sleep(5)  # brief pause before retry
+            await asyncio.sleep(5)
             continue
 
         if response.usage:
