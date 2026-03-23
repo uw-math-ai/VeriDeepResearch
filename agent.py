@@ -12,8 +12,6 @@ from config import (
     OUTPUT_COST_PER_TOKEN,
     MAX_COST_PER_QUERY,
     MAX_AGENT_ITERATIONS,
-    ARISTOTLE_POLL_INTERVAL,
-    ARISTOTLE_MAX_POLLS,
 )
 from tools import (
     search_theorems,
@@ -60,12 +58,18 @@ Write Lean 4 code yourself and verify with **check_lean_code** (Axle — takes s
 
 ### Phase 3: Aristotle + active proving
 If Axle verification fails after several attempts:
-1. **Submit to Aristotle** — submit the main result as a natural language prompt.
-2. **Keep actively trying** — search more declarations, try different proof strategies, verify with check_lean_code.
-3. **Periodically check Aristotle** with check_aristotle_status.
-4. **If Aristotle returns with sorry**: take the output, identify sorry'd sub-lemmas, submit EACH to Aristotle as a new job. Try to prove them yourself too.
-5. **If Aristotle returns sorry-free**: verify with check_lean_code.
-6. Keep iterating until all sorries are filled or budget is exhausted.
+1. **Submit to Aristotle** — preferably Lean code with `sorry` placeholders.
+2. **DO NOT WAIT for Aristotle.** Immediately continue trying to prove it yourself:
+   - Try different proof strategies with check_lean_code.
+   - Search for more Mathlib declarations.
+   - Try decomposing into smaller lemmas.
+3. **Periodically check Aristotle** with check_aristotle_status (every 5-10 iterations).
+4. **When Aristotle is COMPLETE**: call get_aristotle_result, verify the code with check_lean_code.
+5. **If Aristotle returns with sorry**: identify sorry'd sub-lemmas, submit EACH to Aristotle as a new job. Try to prove them yourself too.
+6. **If Aristotle returns sorry-free**: verify with check_lean_code.
+7. Keep iterating until all sorries are filled or budget is exhausted.
+
+**CRITICAL: Never call wait_for_aristotle. Always keep actively proving.**
 
 ### Phase 4: Final answer
 Call **final_answer** with:
@@ -75,8 +79,9 @@ Call **final_answer** with:
 - Whether verification succeeded
 
 ## Key principles
-- **NEVER sit idle.** Always be actively trying to prove the result.
+- **NEVER sit idle.** Always be actively trying to prove the result. NEVER call wait_for_aristotle.
 - Write ALL Lean code yourself — you are the prover. Aristotle is your backup.
+- After submitting to Aristotle, IMMEDIATELY try proving it yourself. Check Aristotle every 5-10 iterations.
 - The code MUST contain `theorem` or `lemma` declarations.
 - When Aristotle returns code with sorry, DECOMPOSE and resubmit. Don't give up.
 - For false statements, PROVE THE NEGATION.
@@ -259,9 +264,15 @@ async def run_agent_job(job: JobState) -> None:
                 job.save()
                 return
 
-            # Handle wait_for_aristotle with polling
+            # wait_for_aristotle removed — redirect to non-blocking check
             if fn_name == "wait_for_aristotle":
-                result = await _poll_aristotle(job, fn_args)
+                project_id = fn_args.get("project_id", "")
+                info = await check_aristotle_status(project_id)
+                status = info.get("status", "UNKNOWN")
+                if status in ("COMPLETE", "COMPLETE_WITH_ERRORS"):
+                    result = await get_aristotle_result(project_id)
+                else:
+                    result = json.dumps(info) + "\n\nAristotle is still running. Do NOT wait — keep working on the proof yourself. Check back later with check_aristotle_status."
                 job.messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call.id,
@@ -390,49 +401,8 @@ async def _handle_tool_call(fn_name: str, fn_args: dict, job: JobState) -> str:
     return json.dumps({"error": f"Unknown tool: {fn_name}"})
 
 
-async def _poll_aristotle(job: JobState, fn_args: dict) -> str:
-    project_id = fn_args.get("project_id", "")
-    short_id = project_id[:8]
-    max_wait_min = (ARISTOTLE_MAX_POLLS * ARISTOTLE_POLL_INTERVAL) // 60
-    job.add_status(f"**Waiting for Aristotle** [{short_id}] (timeout: {max_wait_min} min)...")
-    job.save()
-
-    for poll_idx in range(ARISTOTLE_MAX_POLLS):
-        await asyncio.sleep(ARISTOTLE_POLL_INTERVAL)
-        info = await check_aristotle_status(project_id)
-
-        if "error" in info:
-            job.add_status(f"Aristotle [{short_id}] error: {info['error']}")
-            job.save()
-            return json.dumps(info)
-
-        status = info.get("status", "UNKNOWN")
-        pct = info.get("percent_complete")
-        elapsed = (poll_idx + 1) * ARISTOTLE_POLL_INTERVAL
-        elapsed_min = elapsed // 60
-        elapsed_sec = elapsed % 60
-        pct_str = f" ({pct}%)" if pct is not None else ""
-        time_str = f"{elapsed_min}m{elapsed_sec:02d}s" if elapsed_min else f"{elapsed}s"
-        job.add_status(f"Aristotle [{short_id}]: {status}{pct_str} — {time_str}")
-
-        # Update aristotle_jobs
-        for aj in job.aristotle_jobs:
-            if aj.get("project_id") == project_id:
-                aj["status"] = status
-                aj["percent_complete"] = pct
-
-        job.save()
-
-        if status in TERMINAL_STATUSES:
-            if status in ("COMPLETE", "COMPLETE_WITH_ERRORS"):
-                job.add_status(f"Aristotle [{short_id}]: downloading result...")
-                job.save()
-                return await get_aristotle_result(project_id)
-            return f"Aristotle project finished with status: {status}"
-
-    job.add_status(f"**Aristotle [{short_id}] timed out** after {max_wait_min} minutes")
-    job.save()
-    return f"Aristotle [{short_id}] timed out"
+    # _poll_aristotle removed — blocking wait was the #1 bottleneck.
+    # Agent now uses check_aristotle_status (non-blocking) + get_aristotle_result.
 
 
 async def _maybe_auto_finalize(

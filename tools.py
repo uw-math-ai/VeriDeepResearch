@@ -311,8 +311,8 @@ TOOL_DEFINITIONS = [
             "description": (
                 "Submit a proof request to Aristotle (automated theorem prover). "
                 "Aristotle proves graduate/research-level math in Lean 4. "
-                "Returns a project_id immediately — use check_aristotle_status or "
-                "wait_for_aristotle to get results later.\n\n"
+                "Returns a project_id immediately — use check_aristotle_status to poll "
+                "and get_aristotle_result when COMPLETE.\n\n"
                 "PREFERRED FORMAT: Lean 4 code with sorry placeholders. This preserves "
                 "the exact theorem signature and lets Aristotle focus on filling proofs:\n"
                 "  'Fill in the sorries:\\n```lean\\nimport Mathlib\\n\\ntheorem my_thm ... := by\\n  sorry\\n```'\n\n"
@@ -358,27 +358,8 @@ TOOL_DEFINITIONS = [
             },
         },
     },
-    {
-        "type": "function",
-        "function": {
-            "name": "wait_for_aristotle",
-            "description": (
-                "Wait for an Aristotle project to complete (polls every 30s, up to 20 min). "
-                "Returns the Lean code produced. Only call this when you're ready to "
-                "collect results — do other work first."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "project_id": {
-                        "type": "string",
-                        "description": "The project_id from submit_to_aristotle.",
-                    }
-                },
-                "required": ["project_id"],
-            },
-        },
-    },
+    # wait_for_aristotle REMOVED — it blocked the agent for 2+ hours.
+    # Agent must use check_aristotle_status (non-blocking) + get_aristotle_result instead.
     {
         "type": "function",
         "function": {
