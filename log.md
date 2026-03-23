@@ -132,3 +132,53 @@ The orchestrator (Kimi K2.5) and Aristotle both struggle with hard Lean formaliz
 - Better Lean error pattern handling (orchestrator wastes iterations on the same compilation errors)
 - Decomposition into smaller lemmas before Aristotle submission
 - Using Aristotle results more effectively (extracting partial progress from sorry-containing results)
+
+## Iteration 4 — 2026-03-23 00:15 PDT
+
+### Diagnosis
+The orchestrator wasted 10-20 iterations trying to write Lean itself before submitting to Aristotle. On hard problems, those iterations were almost always fruitless — the orchestrator can't write correct proofs for complex theorems. Meanwhile Aristotle sat unused.
+
+### Fix: Submit to Aristotle early + error categorization
+
+**1. "Submit early" strategy (HIGH IMPACT)**
+Changed the workflow from "try yourself first, Aristotle as last resort" to:
+- Write the theorem STATEMENT first (with sorry)
+- Submit to Aristotle IMMEDIATELY once statement compiles
+- Keep proving yourself in parallel
+
+Updated system prompt phases:
+- Phase 2: "Write statement + parallel proving" (was "Fast attempt")
+- Phase 3: "Aristotle results + decomposition" (was "Aristotle + active proving")
+- Key principle: "Submit to Aristotle EARLY — as soon as you have a compiling theorem statement with sorry"
+
+**2. Lean error categorization**
+Added `_summarize_lean_errors()` — parses Axle errors and categorizes them (unknown identifier, type mismatch, unsolved goals, syntax) for better status messages. Helps the agent and user understand what's failing.
+
+### Test Results
+
+| Problem | Time | Iter | Cost | check_lean_code | Aristotle submit at | Result |
+|---------|------|------|------|-----------------|---------------------|--------|
+| sqrt(2) irrational | 14s | 1 | $0.008 | 1 | N/A | VERIFIED (1-liner: `Nat.prime_two.irrational_sqrt`) |
+| B1 plane coloring | 13m | 95 | $1.72 | 29 | iter 19 (2 min) | Sorry (correct formalization attempt) |
+
+**Key metric: B1 submitted to Aristotle at iteration 19 (2 min), vs the old pattern of ~30-40 iterations (5-10 min).** This gives Aristotle more time to work while the agent proves in parallel.
+
+B1's 95 iterations in 13 min = 7.3 iter/min. All non-blocking: 29 proof attempts + 51 Aristotle status checks + 2 result downloads.
+
+### Email quality check
+All 6 emails from iterations 1-3 reviewed:
+- Sum formula: VERIFIED, clean LaTeX induction proof
+- B3v2: PARTIAL, excellent NL (Fermat + Zsigmondy), honest sorry
+- B4: PARTIAL, correct proof strategy in NL
+- A2: UNVERIFIED, correct answer (a=1/π, b=4/π²)
+- B2: PARTIAL, correct formalization
+- A3: VERIFIED (though tautological — pre-strict-review)
+
+### Code Changes
+- `agent.py`: Rewrote Phase 2/3 workflow in system prompt for "submit early" strategy. Added `_summarize_lean_errors()` for actionable error feedback.
+
+### Cumulative improvements
+1. Iter 1: Context overflow fix + self-review gate
+2. Iter 2: Non-blocking Aristotle (9x throughput)
+3. Iter 3: Strict self-review (extract theorem statements)
+4. Iter 4: Submit to Aristotle early + error categorization

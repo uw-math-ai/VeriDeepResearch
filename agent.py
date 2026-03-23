@@ -49,27 +49,30 @@ If a statement is FALSE or you suspect it is false:
 2. Search Mathlib with **search_lean_library** (by name or natural language).
 3. Search Mathlib by type pattern with **search_loogle** (e.g. "_ + _ = _ + _").
 
-### Phase 2: Fast attempt
-Write Lean 4 code yourself and verify with **check_lean_code** (Axle — takes seconds).
-- The code MUST contain at least one `theorem` or `lemma` declaration.
-- If errors: analyze the error, fix, and re-check.
-- If the statement seems false: try proving the NEGATION instead.
-- Note: the system automatically finalizes when Axle returns okay=true AND the code is sorry-free with theorem/lemma declarations.
+### Phase 2: Write statement + parallel proving
+1. **Write the formal Lean 4 theorem STATEMENT first** (with `sorry` as proof).
+2. **Verify the statement compiles** with check_lean_code (just the statement + sorry).
+3. Once the statement compiles:
+   - **Submit to Aristotle immediately** with the sorry'd code. Don't wait to try yourself first.
+   - **Simultaneously try proving it yourself** with check_lean_code.
+4. If your proof attempt fails after 3-5 tries on a specific approach, try a DIFFERENT strategy:
+   - Different tactics (simp, omega, ring, norm_num, linarith, nlinarith)
+   - Different proof structure (induction, cases, contradiction, by_contra)
+   - Decompose into smaller lemmas
+5. **If the statement seems false**: try proving the NEGATION instead.
+6. Note: the system automatically finalizes when Axle returns okay=true AND the code is sorry-free with theorem/lemma declarations AND self-review passes.
 
-### Phase 3: Aristotle + active proving
-If Axle verification fails after several attempts:
-1. **Submit to Aristotle** — preferably Lean code with `sorry` placeholders.
-2. **DO NOT WAIT for Aristotle.** Immediately continue trying to prove it yourself:
-   - Try different proof strategies with check_lean_code.
-   - Search for more Mathlib declarations.
-   - Try decomposing into smaller lemmas.
-3. **Periodically check Aristotle** with check_aristotle_status (every 5-10 iterations).
-4. **When Aristotle is COMPLETE**: call get_aristotle_result, verify the code with check_lean_code.
-5. **If Aristotle returns with sorry**: identify sorry'd sub-lemmas, submit EACH to Aristotle as a new job. Try to prove them yourself too.
-6. **If Aristotle returns sorry-free**: verify with check_lean_code.
-7. Keep iterating until all sorries are filled or budget is exhausted.
+### Phase 3: Aristotle results + decomposition
+1. **Periodically check Aristotle** with check_aristotle_status (every 5-10 iterations).
+2. **When Aristotle is COMPLETE**: call get_aristotle_result, verify with check_lean_code.
+3. **If Aristotle returns sorry-free**: verify with check_lean_code. Done!
+4. **If Aristotle returns with sorry**:
+   - Extract the sorry'd sub-lemmas from Aristotle's output.
+   - Submit EACH sub-lemma to Aristotle as a separate job.
+   - Try proving the sub-lemmas yourself too.
+5. Keep iterating until all sorries are filled or budget is exhausted.
 
-**CRITICAL: Never call wait_for_aristotle. Always keep actively proving.**
+**CRITICAL: Never call wait_for_aristotle. Submit to Aristotle EARLY (after writing the statement), not as a last resort.**
 
 ### Phase 4: Final answer
 Call **final_answer** with:
@@ -79,11 +82,11 @@ Call **final_answer** with:
 - Whether verification succeeded
 
 ## Key principles
-- **NEVER sit idle.** Always be actively trying to prove the result. NEVER call wait_for_aristotle.
-- Write ALL Lean code yourself — you are the prover. Aristotle is your backup.
-- After submitting to Aristotle, IMMEDIATELY try proving it yourself. Check Aristotle every 5-10 iterations.
+- **Submit to Aristotle EARLY** — as soon as you have a compiling theorem statement with sorry. Don't waste 10+ iterations trying yourself first.
+- **NEVER sit idle.** Keep proving while Aristotle works. NEVER call wait_for_aristotle.
+- **Vary your approach.** If the same tactic fails 3 times, try something completely different.
 - The code MUST contain `theorem` or `lemma` declarations.
-- When Aristotle returns code with sorry, DECOMPOSE and resubmit. Don't give up.
+- When Aristotle returns code with sorry, DECOMPOSE into sub-lemmas and resubmit each separately.
 - For false statements, PROVE THE NEGATION.
 """
 
@@ -120,6 +123,27 @@ Respond with:
 2. Brief analysis of each (1 sentence: what does this actually prove?)
 3. **Verdict: PASS** or **Verdict: FAIL**
 """
+
+def _summarize_lean_errors(errors: list) -> str:
+    """Produce a short summary of Lean error types for status messages."""
+    if not errors:
+        return ""
+    categories = {}
+    for e in errors:
+        msg = str(e.get("message", e) if isinstance(e, dict) else e)
+        if "unknown identifier" in msg or "unknown constant" in msg:
+            categories["unknown identifier"] = categories.get("unknown identifier", 0) + 1
+        elif "type mismatch" in msg:
+            categories["type mismatch"] = categories.get("type mismatch", 0) + 1
+        elif "unsolved goals" in msg:
+            categories["unsolved goals"] = categories.get("unsolved goals", 0) + 1
+        elif "expected" in msg.lower() and "got" in msg.lower():
+            categories["syntax"] = categories.get("syntax", 0) + 1
+    if not categories:
+        return ""
+    parts = [f"{v} {k}" for k, v in categories.items()]
+    return f" ({', '.join(parts)})"
+
 
 TERMINAL_STATUSES = {
     "COMPLETE", "COMPLETE_WITH_ERRORS", "FAILED",
@@ -366,8 +390,11 @@ async def _handle_tool_call(fn_name: str, fn_args: dict, job: JobState) -> str:
                 else:
                     job.add_status("Lean code verified successfully!")
             else:
-                n = len(parsed.get("errors", []))
-                job.add_status(f"Lean code has {n} error(s)")
+                errors = parsed.get("errors", [])
+                n = len(errors)
+                # Summarize error types for better status messages
+                summary = _summarize_lean_errors(errors)
+                job.add_status(f"Lean code has {n} error(s){summary}")
         except json.JSONDecodeError:
             pass
         return result
