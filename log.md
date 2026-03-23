@@ -84,3 +84,51 @@ B4 behavior: submitted to Aristotle → immediately kept trying proofs → check
 
 ### Biggest Improvement Opportunity
 Self-review is still too lenient (from iteration 1 analysis). The non-blocking Aristotle fix was higher priority and is now done. Next: make self-review check the theorem *statement* against the question, not just the theorem *name*.
+
+## Iteration 3 — 2026-03-22 20:15 PDT
+
+### Diagnosis
+Cross-iteration analysis revealed the #1 quality issue: **self-review is too lenient**. It passed tautological proofs (A3's `n%4` classification, A1/B1's helper lemmas) because it checked theorem names/comments rather than type signatures.
+
+Data from all completed jobs:
+- 4 "fast verified" results — all were superficial (tautologies or helper lemmas)
+- 4 slow results — all had good NL explanations but incomplete Lean proofs
+- The system was either lying about quality or giving up honestly. No middle ground.
+
+### Fix: Strict self-review with theorem statement extraction (HIGH IMPACT)
+
+Rewrote `SELF_REVIEW_PROMPT` with a 3-step structured process:
+1. **Extract theorem statements** — copy-paste EVERY theorem/lemma type signature, IGNORING comments
+2. **Check mathematical substance** — is the statement trivially true regardless of domain? Would `A ∨ ¬A` or `n%4 ∈ {0,1,2,3}` be true without any game/sequence/problem context?
+3. **Check domain formalization** — if the question is about a game, is the game defined? About a sequence, is it defined?
+
+Key rule: "Comments and theorem names are IRRELEVANT — only the Lean type signature matters."
+
+### Test Results
+
+| Problem | Time | Cost | Self-review | Quality |
+|---------|------|------|-------------|---------|
+| Sum formula (1+2+...+n) | 19s | $0.01 | PASSED | Legitimate: `Finset.sum_Icc`, induction, omega |
+| B3v2 (2025^n-15^n divisors) | 9m | $0.75 | N/A (sorry) | Correct direction (yes, contains all), honest sorry |
+
+Sum formula validates that strict review doesn't block legitimate proofs.
+B3v2 shows improved correctness: previous attempt used S={0} (0 isn't a positive integer), now correctly proves "yes" by strong induction starting from 1∈S.
+
+### Iteration 1-2 final job updates
+- **A2** (sin bounds): Completed after 3.6h, $1.26. Sorry-free but unverified (LLM called final_answer with verified=false). Correct NL answer (a=1/π, b=4/π²).
+- **B2** (centroid): Completed after 3.5h, $1.71. Has sorry. Good formalization attempt.
+- **B4** (matrix ineq): Completed in 13m, $1.70. Has sorry. Excellent NL proof with correct lemma decomposition.
+
+### Code Changes
+- `agent.py`: Rewrote `SELF_REVIEW_PROMPT` — 3-step structured review (extract statements, check substance, check domain formalization)
+
+### Cumulative improvements
+1. Iter 1: Context overflow fix + self-review gate (catches tangential lemmas)
+2. Iter 2: Non-blocking Aristotle (9x throughput)
+3. Iter 3: Strict self-review (catches tautological proofs)
+
+### Biggest remaining bottleneck
+The orchestrator (Kimi K2.5) and Aristotle both struggle with hard Lean formalization. NL reasoning is solid but translation to Lean fails on anything beyond ~20 lines. Next improvement candidates:
+- Better Lean error pattern handling (orchestrator wastes iterations on the same compilation errors)
+- Decomposition into smaller lemmas before Aristotle submission
+- Using Aristotle results more effectively (extracting partial progress from sorry-containing results)

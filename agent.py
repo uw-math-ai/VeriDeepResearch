@@ -88,21 +88,37 @@ Call **final_answer** with:
 """
 
 SELF_REVIEW_PROMPT = """\
-You are a mathematical proof reviewer. You will receive:
+You are a strict mathematical proof reviewer. You will receive:
 1. An original mathematical question.
 2. Lean 4 code that compiles without errors and without sorry.
 
-Your task: determine whether the Lean 4 code **actually proves the main claim** in the question.
+Your task: determine whether the Lean 4 code **actually proves the main claim**.
 
-Rules:
-- The code must contain a theorem or lemma whose STATEMENT directly corresponds to the question.
-- Helper lemmas alone are NOT sufficient — the main claim must be stated and proved.
-- A proof of a weaker or tangential result is a FAIL.
-- If the question asks to "prove X", the code must contain a theorem that states X (or an equivalent formulation).
-- If the question asks to "find X", the code must exhibit X and prove it satisfies the required properties.
+## Step 1: Extract theorem statements
+List EVERY `theorem` and `lemma` declaration from the code. Write out the FULL type signature (everything between the name and `:= by`). IGNORE all comments.
 
-Respond with a brief analysis (2-3 sentences) followed by:
-**Verdict: PASS** or **Verdict: FAIL**
+## Step 2: Check mathematical substance
+For each theorem statement, ask:
+- Does this statement encode the SPECIFIC mathematical claim from the question?
+- Or is it a TRIVIALLY TRUE statement (e.g., `A ∨ ¬A`, `n % 4 ∈ {0,1,2,3}`, basic type equivalences)?
+- Would this statement be true REGARDLESS of the mathematical context? If so, it's trivial.
+
+## Step 3: Check domain formalization
+- If the question involves a game, does the code define the game and prove a property of it?
+- If the question involves sequences, does the code define the sequence?
+- If the question involves specific mathematical objects, are they formalized?
+- A theorem about `n % 4` does NOT prove anything about a game just because a comment says so.
+
+## Rules
+- Comments and theorem names are IRRELEVANT — only the Lean type signature matters.
+- Helper lemmas without a main result = FAIL.
+- Trivially true statements dressed up with domain-specific names = FAIL.
+- The theorem must FORMALIZE the actual mathematical claim, not just name it.
+
+Respond with:
+1. Extracted theorem statements (copy-paste from code)
+2. Brief analysis of each (1 sentence: what does this actually prove?)
+3. **Verdict: PASS** or **Verdict: FAIL**
 """
 
 TERMINAL_STATUSES = {
