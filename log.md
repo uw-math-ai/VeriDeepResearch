@@ -421,3 +421,40 @@ Answer contains LaTeX like `$\sin(x) \cdot \cos(x)$` which now renders as proper
 - `templates/status.html`: Added KaTeX CSS/JS CDN links, `renderMd()` markdown-to-HTML function, KaTeX auto-render on poll updates and initial load, CSS for rendered answer content
 
 ### Overall: 19/26 verified (73%), $11.45 total
+
+## Iteration 11 — 2026-03-24 08:00 PDT
+
+### Diagnosis
+The agent's biggest weakness on hard problems is decomposition: when code has sorry, it has to manually identify the sorry'd subgoals and figure out their standalone statements. This is error-prone and wastes iterations.
+
+Discovered Axle's `sorry2lemma` API — it automatically extracts sorry'd subgoals into standalone lemma stubs with full context and reconstructs callsites. This is exactly the decomposition automation the agent needs.
+
+### Fix: Add `extract_sorry_lemmas` tool (HIGH IMPACT)
+
+Added a new agent tool backed by Axle's `sorry2lemma` endpoint:
+- **Input**: Lean code with sorry placeholders
+- **Output**: Decomposed code with each sorry extracted into a standalone lemma stub
+- **Use case**: When code compiles with sorry, extract lemmas → submit each to Aristotle independently
+
+Tested on B3v2's sorry-containing code: successfully extracted the remaining sorry into a standalone lemma `number_theory_9496.sorried` with full context (all hypotheses preserved).
+
+Updated system prompt Phase 3 to reference the new tool: "Call extract_sorry_lemmas on sorry-containing code. Submit EACH extracted lemma to Aristotle as a separate job."
+
+### Quality audit (independent verification)
+Used Axle MCP to independently verify 3 "verified" proofs:
+- Cauchy-Schwarz: ✅ okay=true, 0 errors
+- False statement (|x|): ✅ okay=true, 0 errors
+- sqrt(2): ✅ okay=true, 0 errors
+
+All verified proofs are genuine — no false positives from Axle.
+
+### Test Results
+| Problem | Time | Cost | Status |
+|---------|------|------|--------|
+| AM-GM two-variable | ~20s | $0.02 | VERIFIED | Uses (√x-√y)²≥0, nlinarith |
+
+### Code Changes
+- `tools.py`: Added `extract_sorry_lemmas()` function (calls Axle sorry2lemma API), added tool definition to TOOL_DEFINITIONS
+- `agent.py`: Imported `extract_sorry_lemmas`, added handler in `_handle_tool_call`, updated system prompt Phase 3
+
+### Overall: 20/27 verified (74%), $11.57 total

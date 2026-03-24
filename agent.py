@@ -18,6 +18,7 @@ from tools import (
     search_lean_library,
     search_loogle,
     check_lean_code,
+    extract_sorry_lemmas,
     submit_to_aristotle,
     check_aristotle_status,
     get_aristotle_result,
@@ -67,10 +68,11 @@ If a statement is FALSE or you suspect it is false:
 2. **When Aristotle is COMPLETE**: call get_aristotle_result, verify with check_lean_code.
 3. **If Aristotle returns sorry-free**: verify with check_lean_code. Done!
 4. **If Aristotle returns with sorry**:
-   - Extract the sorry'd sub-lemmas from Aristotle's output.
-   - Submit EACH sub-lemma to Aristotle as a separate job.
+   - Call **extract_sorry_lemmas** on the sorry-containing code. This automatically decomposes it into standalone lemma stubs.
+   - Submit EACH extracted lemma to Aristotle as a separate job (use the lemma code as the prompt).
    - Try proving the sub-lemmas yourself too.
-5. Keep iterating until all sorries are filled or budget is exhausted.
+5. **You can also use extract_sorry_lemmas on YOUR OWN sorry-containing code** to decompose it before submitting to Aristotle.
+6. Keep iterating until all sorries are filled or budget is exhausted.
 
 **CRITICAL: Never call wait_for_aristotle. Submit to Aristotle EARLY (after writing the statement), not as a last resort.**
 
@@ -447,6 +449,19 @@ async def _handle_tool_call(fn_name: str, fn_args: dict, job: JobState) -> str:
                 # Summarize error types for better status messages
                 summary = _summarize_lean_errors(errors)
                 job.add_status(f"Lean code has {n} error(s){summary}")
+        except json.JSONDecodeError:
+            pass
+        return result
+
+    if fn_name == "extract_sorry_lemmas":
+        code = fn_args.get("code", "")
+        job.add_status("Extracting sorry'd sub-lemmas...")
+        result = await extract_sorry_lemmas(code)
+        try:
+            parsed = json.loads(result)
+            n = parsed.get("num_lemmas", 0)
+            names = parsed.get("lemma_names", [])
+            job.add_status(f"Extracted {n} sub-lemma(s): {', '.join(names)}")
         except json.JSONDecodeError:
             pass
         return result

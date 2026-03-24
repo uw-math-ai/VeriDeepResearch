@@ -137,6 +137,39 @@ async def check_lean_code(code: str) -> str:
 
 
 
+async def extract_sorry_lemmas(code: str) -> str:
+    """Use Axle sorry2lemma to extract sorry'd subgoals into standalone lemma stubs."""
+    try:
+        async with httpx.AsyncClient(timeout=180) as client:
+            response = await client.post(
+                f"{AXLE_BASE_URL}/sorry2lemma",
+                headers={
+                    "Authorization": f"Bearer {AXLE_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "content": code,
+                    "environment": LEAN_ENVIRONMENT,
+                    "extract_sorries": True,
+                    "extract_errors": False,
+                    "reconstruct_callsite": True,
+                    "timeout_seconds": 120,
+                },
+            )
+            if response.status_code != 200:
+                return json.dumps({"error": f"Axle HTTP {response.status_code}: {response.text[:500]}"})
+            data = response.json()
+            lemma_names = data.get("lemma_names", [])
+            content = data.get("content", "")
+            return json.dumps({
+                "lemma_names": lemma_names,
+                "decomposed_code": content,
+                "num_lemmas": len(lemma_names),
+            }, indent=2)
+    except Exception as e:
+        return json.dumps({"error": f"sorry2lemma error: {e}"})
+
+
 # ---------------------------------------------------------------------------
 # Aristotle (Lean formalization & proving)
 # ---------------------------------------------------------------------------
@@ -377,6 +410,28 @@ TOOL_DEFINITIONS = [
                     }
                 },
                 "required": ["project_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "extract_sorry_lemmas",
+            "description": (
+                "Extract sorry'd subgoals from Lean code into standalone lemma stubs. "
+                "Use this when you have code that compiles with sorry — it decomposes the sorry "
+                "into independent lemma statements that can each be submitted to Aristotle. "
+                "Returns the lemma names and decomposed code."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "Lean 4 code containing sorry placeholders.",
+                    }
+                },
+                "required": ["code"],
             },
         },
     },
