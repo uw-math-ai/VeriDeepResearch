@@ -367,6 +367,23 @@ async def run_agent_job(job: JobState) -> None:
                 if auto:
                     return
                 _track_best_code(job, fn_args, result)
+                # Stuck detection: if 5+ consecutive check_lean_code with errors, nudge
+                if not hasattr(job, '_consecutive_lean_errors'):
+                    job._consecutive_lean_errors = 0
+                try:
+                    parsed_result = json.loads(result)
+                    if parsed_result.get("okay"):
+                        job._consecutive_lean_errors = 0
+                    else:
+                        job._consecutive_lean_errors += 1
+                        if job._consecutive_lean_errors >= 5:
+                            job._consecutive_lean_errors = 0
+                            job.messages.append({
+                                "role": "user",
+                                "content": "HINT: You've had 5+ consecutive Lean compilation errors. Try a COMPLETELY DIFFERENT approach: different proof strategy, different formalization, or decompose into smaller lemmas. If you haven't submitted to Aristotle yet, do so now with your best sorry'd code.",
+                            })
+                except (json.JSONDecodeError, KeyError):
+                    pass
 
             job.messages.append({
                 "role": "tool",
@@ -459,6 +476,20 @@ async def _handle_tool_call(fn_name: str, fn_args: dict, job: JobState) -> str:
 
     if fn_name == "check_aristotle_status":
         project_id = fn_args.get("project_id", "")
+        # Rate-limit: skip if checked within last 60 seconds
+        now = time.time()
+        last_check_key = f"_ari_check_{project_id}"
+        last_check = getattr(job, '_ari_check_times', {}).get(project_id, 0)
+        if now - last_check < 60:
+            # Return cached status without API call
+            for aj in job.aristotle_jobs:
+                if aj.get("project_id") == project_id:
+                    cached = {"project_id": project_id, "status": aj.get("status", "UNKNOWN"), "percent_complete": aj.get("percent_complete")}
+                    return json.dumps(cached) + "\n\n(Cached — check again later. Focus on proving the theorem yourself.)"
+        # Actual API call
+        if not hasattr(job, '_ari_check_times'):
+            job._ari_check_times = {}
+        job._ari_check_times[project_id] = now
         info = await check_aristotle_status(project_id)
         status = info.get("status", "UNKNOWN")
         pct = info.get("percent_complete")

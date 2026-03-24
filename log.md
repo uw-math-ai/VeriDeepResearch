@@ -357,3 +357,42 @@ The system reliably solves:
 - Structural classification (<7m): A5 alternating sequences, n³-n div 6
 
 Does not reliably solve: hard analysis (sin bounds, centroid), hard combinatorics (matrix inequality), hard geometry (plane coloring)
+
+## Iteration 9 — 2026-03-23 12:30 PDT
+
+### Diagnosis
+Analyzed tool call patterns across all 6 partial/failed jobs. Found:
+- **B1v2 spent 53% of tool calls on check_aristotle_status** (51/96 calls)
+- Other partial jobs wasted 17-25% on redundant status checks
+- Agent checks Aristotle almost every iteration instead of every 5-10 as prompted
+- 7 consecutive Lean compilation errors without changing approach (construction problem)
+
+### Fixes
+
+**1. Aristotle status check rate-limiting (EFFICIENCY)**
+Added 60-second rate limit on `check_aristotle_status` per project. If the agent checks the same project within 60s, it gets a cached result + reminder to "Focus on proving the theorem yourself." This would have reduced B1v2's status checks from 51 to ~13 (saving ~40 tool calls worth of context).
+
+**2. Stuck detection after consecutive errors (QUALITY)**
+After 5 consecutive `check_lean_code` failures, inject a hint: "Try a COMPLETELY DIFFERENT approach: different proof strategy, different formalization, or decompose into smaller lemmas." This breaks the pattern of trying minor variations of the same failing tactic.
+
+### Test Results
+| Problem | Time | Cost | Status |
+|---------|------|------|--------|
+| "Square of odd number is odd" | ~10s | $0.01 | VERIFIED (`Odd` type, ring tactic) |
+| Construction (x^x, from iter 8) | 80 iter | $1.35 | PARTIAL (sorry) |
+
+### Code Changes
+- `agent.py`: Rate-limited `check_aristotle_status` (60s cooldown per project, cached results), added stuck detection after 5 consecutive Lean errors with strategy change hint
+
+### Cumulative improvements (9 iterations)
+1. Context overflow fix + self-review gate
+2. Non-blocking Aristotle (9x throughput)
+3. Strict self-review (extract theorem statements)
+4. Submit to Aristotle early + error categorization
+5. Validation + HF deployment
+6. Programmatic vacuous proof detection
+7. Email quality for rejections
+8. Boundary testing validation
+9. Aristotle rate-limiting + stuck detection
+
+### Overall: 18/23 verified, $11.16 total
