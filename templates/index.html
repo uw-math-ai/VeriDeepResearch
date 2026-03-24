@@ -31,7 +31,8 @@
 <div class="container">
   <div class="nav"><a href="/jobs">View all jobs</a></div>
   <h1>VeriDeepResearch</h1>
-  <p class="subtitle">Ask a mathematical question. Get a verified answer formalized in Lean 4.</p>
+  <p class="subtitle">Ask a mathematical question. Get a verified answer formalized in Lean 4.<br>
+  <span style="font-size:13px; color:#888;">Powered by Kimi K2.5 + Aristotle + Mathlib. Proofs checked with Axle (Lean 4.28.0). Free, no sign-up.</span></p>
 
   <form action="/submit" method="POST" id="form">
     <div class="field">
@@ -48,11 +49,12 @@
 
   <div class="examples">
     <h3>Try an example:</h3>
-    <button class="example-btn" type="button" onclick="setQ(this)">Prove that the sum of two even numbers is even.</button>
-    <button class="example-btn" type="button" onclick="setQ(this)">Which is larger, 9.9 or 9.11? Prove it.</button>
-    <button class="example-btn" type="button" onclick="setQ(this)">Prove that every continuous function on [0,1] is differentiable.</button>
-    <button class="example-btn" type="button" onclick="setQ(this)">Prove that a continuous bijection from a compact space to a Hausdorff space is a homeomorphism.</button>
-    <button class="example-btn" type="button" onclick="setQ(this)">Prove that if G is a finite group of order p*q where p and q are distinct primes with p &lt; q and p does not divide q-1, then G is cyclic.</button>
+    <button class="example-btn" type="button" onclick="setQ(this)">Prove that the square root of 2 is irrational.</button>
+    <button class="example-btn" type="button" onclick="setQ(this)">Prove the Cauchy-Schwarz inequality: for real numbers a_1,...,a_n and b_1,...,b_n, we have (sum a_i*b_i)^2 &lt;= (sum a_i^2)*(sum b_i^2).</button>
+    <button class="example-btn" type="button" onclick="setQ(this)">Prove that every continuous function from R to R is differentiable.</button>
+    <button class="example-btn" type="button" onclick="setQ(this)">Prove Fermat's Little Theorem: for any prime p and integer a not divisible by p, a^(p-1) is congruent to 1 modulo p.</button>
+    <button class="example-btn" type="button" onclick="setQ(this)">Prove that every finite integral domain is a field.</button>
+    <button class="example-btn" type="button" onclick="setQ(this)">Let a, b, c be positive real numbers such that abc = 1. Prove that a + b + c &gt;= 3.</button>
   </div>
 </div>
 <script>

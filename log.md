@@ -492,3 +492,27 @@ All 3 verified in <35s running concurrently. The system finds the right Mathlib 
 
 ### No code changes this iteration
 System is stable and reliable at its capability tier.
+
+## Iteration 13 — 2026-03-24 10:00 PDT
+
+### Focus: User experience + HF deployment verification
+
+**Landing page improvements:**
+- Added technology description ("Powered by Kimi K2.5 + Aristotle + Mathlib. Proofs checked with Axle (Lean 4.28.0). Free, no sign-up.")
+- Updated examples to showcase proven capabilities:
+  - sqrt(2) irrational (Mathlib lookup, <15s)
+  - Cauchy-Schwarz inequality (Mathlib composition, <45s)
+  - "Every continuous function is differentiable" (false statement detection, <1m)
+  - Fermat's Little Theorem (number theory, <1.5m)
+  - Finite integral domain → field (algebra, <35s)
+  - AM-GM with abc=1 (weighted means, <50s)
+
+**HF deployment test:**
+- Submitted "empty set is subset of every set" to vilin97-verideepresearch.hf.space
+- Verified in seconds: `theorem empty_subset : ∅ ⊆ s := by simp`
+- End-to-end working: submit → prove → self-review → email
+
+### Code Changes
+- `templates/index.html`: Updated subtitle with tech stack description, replaced examples with 6 proven-to-work problems across different difficulty levels
+
+### Overall: 22/30 verified locally + HF deployment confirmed working
