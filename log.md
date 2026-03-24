@@ -396,3 +396,28 @@ After 5 consecutive `check_lean_code` failures, inject a hint: "Try a COMPLETELY
 9. Aristotle rate-limiting + stuck detection
 
 ### Overall: 18/23 verified, $11.16 total
+
+## Iteration 10 — 2026-03-23 13:00 PDT
+
+### Diagnosis
+The status page showed answers as raw text — users saw `$\frac{1}{\pi}$` instead of rendered math, `**bold**` instead of bold text. For a math tool, this is a significant UX gap. The emails rendered properly but the live status page did not.
+
+### Fix: KaTeX + markdown rendering on status page (UX)
+
+Added client-side rendering to the status page:
+- **KaTeX** (v0.16.9 via CDN) for LaTeX math: `$...$` inline, `$$...$$` display
+- **Lightweight markdown renderer** (`renderMd` function) for: headers, bold, italic, code blocks, inline code, lists, paragraphs
+- Renders on initial page load AND on each poll update
+- Auto-render with configurable delimiters (also supports `\[...\]` and `\(...\)`)
+
+### Test Results
+| Problem | Time | Cost | Status | Notes |
+|---------|------|------|--------|-------|
+| d/dx(sin x · cos x) | ~30s | $0.06 | VERIFIED | `deriv (sin * cos) = cos(2x)`, answer has LaTeX |
+
+Answer contains LaTeX like `$\sin(x) \cdot \cos(x)$` which now renders as proper math on the status page.
+
+### Code Changes
+- `templates/status.html`: Added KaTeX CSS/JS CDN links, `renderMd()` markdown-to-HTML function, KaTeX auto-render on poll updates and initial load, CSS for rendered answer content
+
+### Overall: 19/26 verified (73%), $11.45 total

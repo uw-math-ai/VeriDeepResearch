@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Job {{ job.job_id }} — VeriDeepResearch</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/contrib/auto-render.min.js"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
@@ -29,7 +32,14 @@
   .code-badge.verified { color: #2e7d32; }
   .code-badge.sorry { color: #e65100; }
   .code-badge.unverified { color: #888; }
-  #answer { font-size: 14px; line-height: 1.6; }
+  #answer { font-size: 14px; line-height: 1.7; }
+  #answer p { margin-bottom: 8px; }
+  #answer h1, #answer h2, #answer h3, #answer h4 { margin: 12px 0 6px; }
+  #answer pre { background: #1e1e1e; color: #d4d4d4; padding: 12px; border-radius: 6px; overflow-x: auto; font-size: 13px; }
+  #answer code { background: #f0f0f0; padding: 1px 4px; border-radius: 3px; font-size: 13px; }
+  #answer pre code { background: none; padding: 0; }
+  #answer ul, #answer ol { margin-left: 20px; margin-bottom: 8px; }
+  #answer blockquote { border-left: 3px solid #ddd; padding-left: 12px; color: #666; }
   .stats { display: flex; gap: 24px; flex-wrap: wrap; font-size: 13px; color: #666; }
   .stats .stat { }
   .stats .stat-label { font-weight: 600; }
@@ -103,6 +113,43 @@
 </div>
 
 <script>
+function renderMd(text) {
+  // Simple markdown to HTML (no external deps)
+  let html = text;
+  // Escape HTML
+  html = html.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // Code blocks: ```...```
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
+  // Inline code: `...`
+  html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
+  // Headers
+  html = html.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+  html = html.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+  html = html.replace(/^## (.+)$/gm, '<h2>$1</h2>');
+  html = html.replace(/^# (.+)$/gm, '<h1>$1</h1>');
+  // Bold: **...**
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  // Italic: *...*
+  html = html.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+  // Unordered list
+  html = html.replace(/^[\-\*] (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)+/g, '<ul>$&</ul>');
+  // Paragraphs: double newline
+  html = html.replace(/\n\n+/g, '</p><p>');
+  html = '<p>' + html + '</p>';
+  // Clean up empty paragraphs
+  html = html.replace(/<p>\s*<\/p>/g, '');
+  html = html.replace(/<p>(<h[1-4]>)/g, '$1');
+  html = html.replace(/(<\/h[1-4]>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<pre>)/g, '$1');
+  html = html.replace(/(<\/pre>)<\/p>/g, '$1');
+  html = html.replace(/<p>(<ul>)/g, '$1');
+  html = html.replace(/(<\/ul>)<\/p>/g, '$1');
+  // Single newlines → <br> (but not inside pre)
+  html = html.replace(/([^>])\n([^<])/g, '$1<br>$2');
+  return html;
+}
+
 const JOB_ID = "{{ job.job_id }}";
 let polling = true;
 
@@ -144,10 +191,21 @@ async function poll() {
       }
     }
 
-    // Answer
+    // Answer (render markdown + LaTeX)
     if (d.answer) {
       document.getElementById('answer-section').style.display = '';
-      document.getElementById('answer').textContent = d.answer;
+      document.getElementById('answer').innerHTML = renderMd(d.answer);
+      if (window.renderMathInElement) {
+        renderMathInElement(document.getElementById('answer'), {
+          delimiters: [
+            {left: '$$', right: '$$', display: true},
+            {left: '$', right: '$', display: false},
+            {left: '\\[', right: '\\]', display: true},
+            {left: '\\(', right: '\\)', display: false},
+          ],
+          throwOnError: false,
+        });
+      }
     }
 
     // Aristotle jobs
@@ -187,6 +245,25 @@ async function poll() {
 
 setInterval(poll, 3000);
 poll();
+
+// Render LaTeX on initial load
+document.addEventListener('DOMContentLoaded', function() {
+  if (window.renderMathInElement) {
+    const answerEl = document.getElementById('answer');
+    if (answerEl && answerEl.textContent.trim()) {
+      answerEl.innerHTML = renderMd(answerEl.textContent);
+      renderMathInElement(answerEl, {
+        delimiters: [
+          {left: '$$', right: '$$', display: true},
+          {left: '$', right: '$', display: false},
+          {left: '\\[', right: '\\]', display: true},
+          {left: '\\(', right: '\\)', display: false},
+        ],
+        throwOnError: false,
+      });
+    }
+  }
+});
 </script>
 </body>
 </html>
