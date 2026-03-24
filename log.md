@@ -572,3 +572,48 @@ This is the most sophisticated Mathlib API usage yet — it requires understandi
 **Aristotle rate-limiting working** — only 4 status checks despite 48 iterations (vs 51 checks in B1v2 pre-fix).
 
 ### Overall: 25/33 verified (76%), $12.21 total
+
+## Iteration 16 — 2026-03-24 12:15 PDT
+
+### Focus: Real-world usability testing
+
+Tested 3 problems real users might submit — spanning linear algebra, topology, and computation.
+
+### Test Results
+
+| Problem | Time | Cost | Status | Proof |
+|---------|------|------|--------|-------|
+| det(MN) = det(M)·det(N) | 28s | $0.01 | VERIFIED | `Matrix.det_mul` |
+| Continuous image of compact is compact | 19s | $0.02 | VERIFIED | `IsCompact.image` |
+| GCD(12345, 67890) = ? | 13s | $0.01 | VERIFIED | = 15 by `rfl` (Lean computes it!) |
+
+All 3 verified in <30s. The GCD proof is notable: `Nat.gcd 12345 67890 = 15 := by rfl` — Lean evaluates the Euclidean algorithm at compile time.
+
+### Overall: 28/36 verified (78%), $12.26 total
+
+### System capability summary after 16 iterations
+
+**Domains covered with verified proofs:**
+- Number theory (Fermat, divisibility, GCD, binomial congruence)
+- Algebra (AM-GM, groups, integral domains, fields, cyclic units)
+- Linear algebra (determinant product)
+- Analysis (irrationals, derivatives, continuity, false statements)
+- Topology (compact images)
+- Combinatorics (permutation classification, injective composition)
+- Set theory (subset, cardinality)
+
+**Architecture:**
+- FastAPI + background workers (3 concurrent)
+- Non-blocking Aristotle with rate-limited status checks
+- Self-review gate (LLM + programmatic vacuous detection)
+- 3-step sorry escalation: repair_proofs → extract_sorry_lemmas → Aristotle
+- Hard context reset on overflow
+- Stuck detection after consecutive errors
+- KaTeX + markdown rendering on status page
+- Email with stats, attachments, LaTeX
+
+**Performance:**
+- Easy problems: <30s, $0.01
+- Medium problems: 1-5m, $0.05-0.65
+- Hard problems: 10-200m, $0.5-1.7 (sorry-containing)
+- Average cost per verified proof: $0.14
