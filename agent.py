@@ -18,6 +18,7 @@ from tools import (
     search_lean_library,
     search_loogle,
     check_lean_code,
+    repair_lean_proofs,
     extract_sorry_lemmas,
     submit_to_aristotle,
     check_aristotle_status,
@@ -53,8 +54,9 @@ If a statement is FALSE or you suspect it is false:
 ### Phase 2: Write statement + parallel proving
 1. **Write the formal Lean 4 theorem STATEMENT first** (with `sorry` as proof).
 2. **Verify the statement compiles** with check_lean_code (just the statement + sorry).
-3. Once the statement compiles:
-   - **Submit to Aristotle immediately** with the sorry'd code. Don't wait to try yourself first.
+3. Once the statement compiles with sorry:
+   - **First try repair_lean_proofs** — it may fill simple sorries automatically in 1-2 seconds.
+   - If sorry remains, **submit to Aristotle** with the sorry'd code.
    - **Simultaneously try proving it yourself** with check_lean_code.
 4. If your proof attempt fails after 3-5 tries on a specific approach, try a DIFFERENT strategy:
    - Different tactics (simp, omega, ring, norm_num, linarith, nlinarith)
@@ -449,6 +451,24 @@ async def _handle_tool_call(fn_name: str, fn_args: dict, job: JobState) -> str:
                 # Summarize error types for better status messages
                 summary = _summarize_lean_errors(errors)
                 job.add_status(f"Lean code has {n} error(s){summary}")
+        except json.JSONDecodeError:
+            pass
+        return result
+
+    if fn_name == "repair_lean_proofs":
+        code = fn_args.get("code", "")
+        job.add_status("Attempting automatic proof repair...")
+        result = await repair_lean_proofs(code)
+        try:
+            parsed = json.loads(result)
+            repairs = parsed.get("repairs_applied", 0)
+            has_sorry = parsed.get("still_has_sorry", True)
+            if repairs > 0 and not has_sorry:
+                job.add_status(f"Proof repair succeeded! {repairs} sorry(s) filled automatically.")
+            elif repairs > 0:
+                job.add_status(f"Partial repair: {repairs} sorry(s) filled, some remain.")
+            else:
+                job.add_status("Proof repair: no sorries could be filled automatically.")
         except json.JSONDecodeError:
             pass
         return result

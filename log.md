@@ -516,3 +516,33 @@ System is stable and reliable at its capability tier.
 - `templates/index.html`: Updated subtitle with tech stack description, replaced examples with 6 proven-to-work problems across different difficulty levels
 
 ### Overall: 22/30 verified locally + HF deployment confirmed working
+
+## Iteration 14 — 2026-03-24 11:00 PDT
+
+### Diagnosis
+The agent's workflow for sorry-containing code was: write sorry → submit to Aristotle → wait. But many sorries can be closed instantly by automation tactics (grind, simp, omega). Tested Axle's `repair_proofs` API:
+- 3 simple sorries (n+0=n, a+b=b+a, 0<n+1): ALL filled by `grind` in 100ms
+- 2 hard sorries (Fermat, AM-GM): Not filled by automation (needs Mathlib-specific reasoning)
+
+### Fix: Add `repair_lean_proofs` tool (EFFICIENCY)
+
+New agent tool that calls Axle's `repair_proofs` API with automation tactics (grind, simp_all, omega, norm_num, nlinarith, aesop). Costs ~1-2 seconds per call.
+
+Updated workflow:
+1. Agent writes code with sorry → compiles
+2. **Call repair_lean_proofs** (NEW, ~1s) — may fill simple sorries instantly
+3. If sorry remains → extract_sorry_lemmas + submit to Aristotle
+4. Keep proving yourself in parallel
+
+This adds a fast, free middle step that catches low-hanging fruit before the expensive Aristotle round-trip (which takes 5-30 minutes).
+
+### Test Results
+| Problem | Time | Cost | Status |
+|---------|------|------|--------|
+| a∣b ∧ b∣a → a=b | ~10s | $0.007 | VERIFIED | `Nat.dvd_antisymm` |
+
+### Code Changes
+- `tools.py`: Added `repair_lean_proofs()` function + tool definition
+- `agent.py`: Added import, handler, updated system prompt Phase 2
+
+### Overall: 23/31 verified (74%), $11.60 total

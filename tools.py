@@ -137,6 +137,39 @@ async def check_lean_code(code: str) -> str:
 
 
 
+async def repair_lean_proofs(code: str) -> str:
+    """Use Axle repair_proofs to automatically fill sorries with grind/simp/omega."""
+    try:
+        async with httpx.AsyncClient(timeout=180) as client:
+            response = await client.post(
+                f"{AXLE_BASE_URL}/repair_proofs",
+                headers={
+                    "Authorization": f"Bearer {AXLE_API_KEY}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "content": code,
+                    "environment": LEAN_ENVIRONMENT,
+                    "terminal_tactics": ["grind", "simp_all", "omega", "norm_num", "nlinarith", "aesop"],
+                    "timeout_seconds": 60,
+                },
+            )
+            if response.status_code != 200:
+                return json.dumps({"error": f"Axle HTTP {response.status_code}: {response.text[:500]}"})
+            data = response.json()
+            repaired_code = data.get("content", code)
+            stats = data.get("repair_stats", {})
+            has_sorry = "sorry" in repaired_code
+            return json.dumps({
+                "repaired_code": repaired_code,
+                "repairs_applied": stats.get("apply_terminal_tactics", 0),
+                "still_has_sorry": has_sorry,
+                "okay": data.get("okay", False),
+            }, indent=2)
+    except Exception as e:
+        return json.dumps({"error": f"repair_proofs error: {e}"})
+
+
 async def extract_sorry_lemmas(code: str) -> str:
     """Use Axle sorry2lemma to extract sorry'd subgoals into standalone lemma stubs."""
     try:
@@ -410,6 +443,28 @@ TOOL_DEFINITIONS = [
                     }
                 },
                 "required": ["project_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "repair_lean_proofs",
+            "description": (
+                "Automatically attempt to fill sorry placeholders with automation tactics "
+                "(grind, simp, omega, norm_num, nlinarith, aesop). FAST (~1-2 seconds). "
+                "Call this BEFORE submitting to Aristotle — it may resolve simple sorries instantly. "
+                "Returns repaired code and whether sorry remains."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "Lean 4 code with sorry placeholders to attempt repair.",
+                    }
+                },
+                "required": ["code"],
             },
         },
     },
