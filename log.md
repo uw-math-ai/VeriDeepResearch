@@ -546,3 +546,29 @@ This adds a fast, free middle step that catches low-hanging fruit before the exp
 - `agent.py`: Added import, handler, updated system prompt Phase 2
 
 ### Overall: 23/31 verified (74%), $11.60 total
+
+## Iteration 15 — 2026-03-24 11:30 PDT
+
+### Focus: Full-pipeline test with all tools active
+
+Tested 2 problems to exercise the complete toolchain (repair_proofs, Aristotle, rate-limiting, self-review).
+
+### Test Results
+
+| Problem | Time | Cost | Status | Key tool usage |
+|---------|------|------|--------|----------------|
+| C(2p,p) ≡ 2 (mod p) | 3.3m | $0.64 | VERIFIED | repair_lean_proofs (1x), Aristotle submitted, Lucas's theorem from Mathlib |
+| Group of order 4 is abelian | 1m | $0.06 | VERIFIED | `IsPGroup.commutative_of_card_eq_prime_sq` |
+
+### Key observations
+
+**Binomial coefficient proof uses Lucas's theorem** — the agent found `Choose.choose_modEq_choose_mod_mul_choose_div_nat` in Mathlib and applied it:
+C(2p, p) ≡ C(0,0) · C(2,1) = 1 · 2 = 2 (mod p)
+
+This is the most sophisticated Mathlib API usage yet — it requires understanding modular arithmetic of binomial coefficients and finding the right lemma.
+
+**`repair_lean_proofs` was called** on the binomial problem (1 time). The tool didn't fill the sorry (it was too hard for automation) but cost nothing to try.
+
+**Aristotle rate-limiting working** — only 4 status checks despite 48 iterations (vs 51 checks in B1v2 pre-fix).
+
+### Overall: 25/33 verified (76%), $12.21 total
