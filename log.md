@@ -788,3 +788,30 @@ Still sorry (fundamental LLM limitation on hard Putnam), but more efficient: few
 System is operationally healthy. All improvements working as designed.
 
 ### Final stats: 33/42 "verified" (79%), $14.26 total
+
+## Iteration 22 — 2026-03-25 10:30 PDT
+
+### Focus: New domain testing — category theory + probability
+
+| Problem | Time | Cost | Status | Proof |
+|---------|------|------|--------|-------|
+| Iso → mono ∧ epi (category theory) | 25s | $0.03 | VERIFIED | `infer_instance` (typeclass system) |
+| P(∅) = 0 (probability) | 19s | $0.01 | VERIFIED | `simp` with `ProbabilityMeasure` |
+
+**9 mathematical domains now covered:**
+number theory, algebra, linear algebra, analysis, topology, combinatorics, set theory, category theory, probability/measure theory
+
+### Final statistics (22 iterations)
+
+- **44 jobs**: 35 verified, 7 partial, 2 rejected
+- **$14.30 total cost** ($0.41 avg per verified proof)
+- **9 mathematical domains** with verified proofs
+- **Input formats**: plain English, LaTeX, yes/no questions, false statements, computation
+- **Deployment**: vilin97-verideepresearch.hf.space (stable)
+
+### System maturity assessment
+The system has reached a stable equilibrium:
+- Standard math (undergraduate level): ~95% success rate, <60s, <$0.10
+- Competition math (Putnam): 0% full proofs, but good NL explanations with honest sorry
+- New domains (category theory, probability): work out of the box thanks to Mathlib coverage
+- Diminishing returns on further iterations — remaining gap is LLM capability, not architecture
