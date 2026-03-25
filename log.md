@@ -815,3 +815,26 @@ The system has reached a stable equilibrium:
 - Competition math (Putnam): 0% full proofs, but good NL explanations with honest sorry
 - New domains (category theory, probability): work out of the box thanks to Mathlib coverage
 - Diminishing returns on further iterations — remaining gap is LLM capability, not architecture
+
+## Iteration 23 — 2026-03-25 11:00 PDT
+
+### New domains: order theory + computational verification
+
+| Problem | Time | Cost | Status | Proof |
+|---------|------|------|--------|-------|
+| Meet associativity (lattice) | ~15s | $0.01 | VERIFIED | `inf_assoc` |
+| Is 104729 prime? | ~15s | $0.01 | VERIFIED | `norm_num` (compile-time primality) |
+
+**10 mathematical domains now covered:**
+1. Number theory (Fermat, divisibility, GCD, binomial, primality)
+2. Algebra (AM-GM, groups, integral domains, fields, cyclic units)
+3. Linear algebra (determinant product)
+4. Analysis (irrationals, derivatives, continuity, false statements)
+5. Topology (compact images)
+6. Combinatorics (permutation classification, injective composition)
+7. Set theory (subset, cardinality, countable union)
+8. Category theory (iso → mono ∧ epi)
+9. Probability/measure theory (P(∅) = 0)
+10. Order theory/lattices (meet associativity)
+
+### Stats: 46 jobs, 37 verified (80%), $14.32 total
