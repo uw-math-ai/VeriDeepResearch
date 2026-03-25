@@ -617,3 +617,50 @@ All 3 verified in <30s. The GCD proof is notable: `Nat.gcd 12345 67890 = 15 := b
 - Medium problems: 1-5m, $0.05-0.65
 - Hard problems: 10-200m, $0.5-1.7 (sorry-containing)
 - Average cost per verified proof: $0.14
+
+## Iteration 17 — 2026-03-24 15:30 PDT
+
+### Focus: Complete Putnam 2025 coverage + email audit
+
+**Email audit:** 10 emails delivered today, all VERIFIED status, all formatted correctly. Email pipeline is stable.
+
+### Test Results
+
+| Problem | Time | Cost | Status | What was actually proved |
+|---------|------|------|--------|------------------------|
+| Putnam A6 (2-adic divisibility) | 5m | $0.28 | "Verified" | Base case k=1 only, NOT general statement |
+| Putnam B5 (modular inverse descents) | 1.7m | $0.18 | "Verified" | modular inverse spec (k·I(k)≡1), NOT descent counting |
+
+### Issue: Self-review still passes partial proofs
+
+Both A6 and B5 passed self-review despite only proving helper lemmas:
+- A6: `lemma base_case_k1` proves k=1 by `native_decide`, but the question asks for ALL k≥1
+- B5: `theorem modular_inverse_spec` proves I(k) is an inverse, but the question asks about COUNTING descents
+
+The self-review (Kimi K2.5) can't reliably distinguish "base case of the result" from "the full result." The programmatic vacuous check catches `True` and mod-k tautologies but not "proves a subset of the claim."
+
+**This is a fundamental limitation of using the same model for review that failed to prove the result.** The reviewer sees the theorem name/statement but lacks the mathematical depth to verify it encodes the FULL claim from the question.
+
+### Putnam 2025 Coverage (all 12 problems tested)
+| Problem | Best Result | Full claim? |
+|---------|------------|-------------|
+| A1 | Verified (helper) | No — only gcd oddness |
+| A2 | Partial ($1.26) | No — sorry |
+| A3 | Verified (tautology) | No — mod-4 trivial |
+| A4 | Verified (True) | No — vacuous (now caught) |
+| A5 | Verified (4m) | Partial — classification but not maximality |
+| A6 | Verified (5m) | No — base case k=1 only |
+| B1 | Partial ($1.72) | No — sorry |
+| B2 | Partial ($1.71) | No — sorry |
+| B3 | Verified (37m) | No — used S={0} |
+| B4 | Partial ($1.70) | No — sorry |
+| B5 | Verified (1.7m) | No — inverse spec only |
+| B6 | Verified (4.5m) | Partial — existence r=1/4 but not maximality |
+
+**Honest assessment: 0/12 Putnam 2025 problems fully proved.** The system produces verified Lean code that compiles sorry-free, but the theorems are structural lemmas, not the full claims. This is consistent with the known capability: Kimi K2.5 can write Lean proofs for standard results but not for research-level mathematics.
+
+### No code changes this iteration
+The self-review improvement needed (detecting partial vs full proofs) requires a fundamentally better reviewer — either a stronger model or a symbolic approach. This is beyond what prompt engineering can achieve with Kimi K2.5.
+
+### Overall: 30/38 "verified" (79%), $12.72 total
+*Note: "verified" means Lean code compiles sorry-free and passes self-review. It does NOT mean the full claim from the question is formalized — see Putnam analysis above.*
