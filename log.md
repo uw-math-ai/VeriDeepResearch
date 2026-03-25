@@ -838,3 +838,27 @@ The system has reached a stable equilibrium:
 10. Order theory/lattices (meet associativity)
 
 ### Stats: 46 jobs, 37 verified (80%), $14.32 total
+
+## Iteration 24 — 2026-03-25 11:30 PDT
+
+### Final test: Z is a PID
+
+| Problem | Time | Cost | Status | Proof |
+|---------|------|------|--------|-------|
+| Z is a principal ideal domain | ~15s | $0.02 | VERIFIED | `IsPrincipalIdealRing ℤ`, `infer_instance` |
+
+### Final project statistics
+
+| Metric | Value |
+|--------|-------|
+| Total jobs | 47 |
+| Verified | 38 (81%) |
+| Partial (sorry) | 7 (15%) |
+| Rejected | 2 (4%) |
+| Total cost | $14.34 |
+| Avg cost/verified | $0.38 |
+| Mathematical domains | 10 |
+| Iterations | 24 |
+
+### Complete list of verified proofs (38)
+sqrt(2) irrational, infinite primes, sum formula, AM-GM (2-var, 3-var), n²+n even, n³-n div 6, n⁵-n div 30, Fermat's Little Theorem, Cauchy-Schwarz, false statement (|x| not differentiable), odd² is odd, d/dx(sin·cos)=cos(2x), injective composition, finite domain→field, (Z/pZ)* cyclic, C(2p,p)≡2 mod p, group of order 4 is abelian, det(MN)=det(M)·det(N), compact image, GCD(12345,67890)=15, dvd antisymmetry, subgroup of abelian is normal, Euclid's lemma, ∅⊆S, binomial sum theorem, π irrational, iso→mono∧epi, P(∅)=0, meet associativity, 104729 is prime, Z is PID, countable union, + Putnam partial results (A1-A6, B1-B6)
