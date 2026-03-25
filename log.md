@@ -738,3 +738,29 @@ Both solved in 1 iteration on the deployed HF Space — system is stable and per
 | 17 | Complete Putnam 2025 coverage | Honest: 0/12 fully proved |
 | 18 | Theorem-question alignment check + disclaimer | Catches partial proofs |
 | 19 | Final HF stability check | Production confirmed |
+
+## Iteration 20 — 2026-03-25 09:00 PDT
+
+### Focus: Edge case testing
+
+Tested two edge cases to verify system robustness:
+
+| Problem | Input type | Result | Proof |
+|---------|-----------|--------|-------|
+| $\sum_{k=0}^{n} \binom{n}{k} = 2^n$ | LaTeX notation | VERIFIED | `Nat.sum_range_choose` |
+| "Is pi rational?" | Yes/no question | VERIFIED | `irrational_pi` from Mathlib |
+
+**LaTeX input works** — the agent correctly parses `$\sum$`, `$\binom{n}{k}$` and formalizes the claim.
+**Yes/no questions work** — the agent interprets "Is pi rational?" as "prove or disprove" and proves the negation.
+
+### Final statistics (20 iterations)
+
+- **41 jobs total**: 33 verified, 6 partial, 2 rejected
+- **Total cost**: $12.79
+- **Average cost per verified proof**: $0.39
+- **Domains covered**: number theory, algebra, linear algebra, analysis, topology, combinatorics, set theory
+- **Deployment**: vilin97-verideepresearch.hf.space (stable)
+- **Input formats**: plain English, LaTeX, yes/no questions, false statements, computational queries
+
+### No code changes this iteration
+System handles all tested edge cases correctly.
