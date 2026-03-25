@@ -163,6 +163,45 @@ def _is_vacuous_proof(code: str) -> bool:
     return False
 
 
+def _check_theorem_question_alignment(question: str, code: str) -> str | None:
+    """Check if theorems in the code plausibly address the question. Returns a warning or None."""
+    import re
+    q_lower = question.lower()
+
+    # Extract all theorem/lemma names from the code
+    normalized = re.sub(r'\n\s+', ' ', code)
+    theorem_lines = [l.strip() for l in normalized.split("\n")
+                     if re.match(r'(?:theorem|lemma)\s', l.strip())]
+
+    if not theorem_lines:
+        return None
+
+    # Check 1: Question asks "for all/every/each k" but no theorem has ∀ over that variable
+    universal_patterns = re.findall(r'for (?:all|every|each)\s+(\w+)', q_lower)
+    if universal_patterns:
+        has_forall = any('∀' in t or 'forall' in t.lower() for t in theorem_lines)
+        # Check if any theorem mentions specific values instead of universally quantified
+        all_specific = all(
+            not any(f'({var}' in t.lower() or f' {var} ' in t.lower() for t in theorem_lines)
+            for var in universal_patterns
+        )
+        # Don't flag if theorems use implicit quantification (arguments before `:`)
+        if not has_forall and all_specific and len(theorem_lines) == 1:
+            # Only flag if there's just one lemma (likely a base case)
+            name_match = re.match(r'(?:theorem|lemma)\s+(\S+)', theorem_lines[0])
+            name = name_match.group(1) if name_match else ""
+            if 'base' in name.lower() or 'case' in name.lower():
+                return f"WARNING: Question asks 'for all {universal_patterns[0]}' but theorem '{name}' appears to be a base case only."
+
+    # Check 2: Question asks about "number of" / "count" but no theorem involves Finset.card
+    if any(w in q_lower for w in ['number of', 'how many', 'count']):
+        has_counting = any('card' in t.lower() or 'count' in t.lower() or 'Finset' in t for t in theorem_lines)
+        if not has_counting:
+            return "WARNING: Question asks about counting but no theorem involves cardinality/counting."
+
+    return None
+
+
 def _summarize_lean_errors(errors: list) -> str:
     """Produce a short summary of Lean error types for status messages."""
     if not errors:
@@ -586,6 +625,13 @@ async def _maybe_auto_finalize(
             })
             return False
 
+        # --- Programmatic pre-check: theorem-question alignment ---
+        alignment_warning = _check_theorem_question_alignment(job.question, code)
+        if alignment_warning:
+            job.add_status(f"Alignment check: {alignment_warning}")
+            job.add_log(f"## Alignment check warning\n{alignment_warning}")
+            # Don't reject outright — pass to LLM self-review with the warning as context
+
         # --- Self-review: does this code actually answer the question? ---
         job.add_status("Lean code verified (sorry-free)! Running self-review...")
         job.add_log("## Self-review: checking if proof answers the original question")
@@ -596,7 +642,7 @@ async def _maybe_auto_finalize(
                 model=KIMI_MODEL,
                 messages=[
                     {"role": "system", "content": SELF_REVIEW_PROMPT},
-                    {"role": "user", "content": f"## Original question\n{job.question}\n\n## Lean 4 code (compiles, sorry-free)\n```lean4\n{code[:4000]}\n```"},
+                    {"role": "user", "content": f"## Original question\n{job.question}\n\n## Lean 4 code (compiles, sorry-free)\n```lean4\n{code[:4000]}\n```{chr(10) + chr(10) + '## Alignment warning' + chr(10) + alignment_warning if alignment_warning else ''}"},
                 ],
                 temperature=0.2,
                 max_tokens=1024,

@@ -664,3 +664,33 @@ The self-review improvement needed (detecting partial vs full proofs) requires a
 
 ### Overall: 30/38 "verified" (79%), $12.72 total
 *Note: "verified" means Lean code compiles sorry-free and passes self-review. It does NOT mean the full claim from the question is formalized — see Putnam analysis above.*
+
+## Iteration 18 — 2026-03-24 16:00 PDT
+
+### Fix: Honest "VERIFIED" badge + theorem-question alignment check
+
+**Problem:** "VERIFIED" badge in emails was misleading for Putnam problems where only helper lemmas (base cases, definitions) were proved, not the full claim.
+
+**Fix 1: Honest disclaimer in VERIFIED emails**
+Added note: "VERIFIED means the Lean 4 code compiles without errors or sorry. Please review the theorem statement to confirm it fully captures your question."
+
+**Fix 2: Programmatic alignment check (`_check_theorem_question_alignment`)**
+Detects two common mismatches:
+- **Universal quantifier mismatch**: Question says "for all/every/each k" but theorem named `base_case_k1` only proves specific case → WARNING
+- **Counting mismatch**: Question asks about "number of" / "how many" but no theorem involves `Finset.card` or counting → WARNING
+
+The alignment warning is:
+1. Shown in the status log
+2. Passed to the LLM self-review as extra context to help it catch partial proofs
+
+**Test results:**
+- A6 base case: ✓ correctly flagged ("theorem 'base_case_k1' appears to be a base case only")
+- B5 inverse spec: ✓ correctly flagged ("Question asks about counting but no theorem involves cardinality")
+- Cauchy-Schwarz: ✓ correctly passed (no warning)
+- Subgroup of abelian is normal: VERIFIED in 8 iterations, correct `instance` proof
+
+### Code Changes
+- `agent.py`: Added `_check_theorem_question_alignment()`, integrated into `_maybe_auto_finalize` before LLM review, pass warning to reviewer as context
+- `email_sender.py`: Added honest disclaimer to VERIFIED emails
+
+### Overall: 31/39 "verified" (79%), $12.77 total
