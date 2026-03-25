@@ -764,3 +764,27 @@ Tested two edge cases to verify system robustness:
 
 ### No code changes this iteration
 System handles all tested edge cases correctly.
+
+## Iteration 21 — 2026-03-25 09:30 PDT
+
+### Focus: Operational health + hard problem re-test
+
+**Email audit:** 5 recent emails verified delivered, including disclaimer-era ones. HTML version includes the "Please review the theorem statement" disclaimer.
+
+**B4 re-test comparison (all improvements active):**
+
+| Metric | B4 v1 (iter 2) | B4 v2 (iter 21) | Δ |
+|--------|----------------|-----------------|---|
+| Time | 13m 15s | 9m 54s | -25% |
+| Cost | $1.70 | $1.47 | -14% |
+| Iterations | 69 | 59 | -14% |
+| check_lean_code | 37 | 23 | -38% |
+| repair_lean_proofs | 0 | 1 | New tool used |
+| Result | sorry | sorry | Same |
+
+Still sorry (fundamental LLM limitation on hard Putnam), but more efficient: fewer wasted proof attempts, faster completion, lower cost. The improvements reduce waste but can't overcome the capability gap.
+
+### No code changes this iteration
+System is operationally healthy. All improvements working as designed.
+
+### Final stats: 33/42 "verified" (79%), $14.26 total
