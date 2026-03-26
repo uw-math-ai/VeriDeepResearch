@@ -372,10 +372,29 @@ async def run_agent_job(job: JobState) -> None:
 
             # Handle final_answer
             if fn_name == "final_answer":
+                lean_code = fn_args.get("lean_code", job.best_lean_code)
+                has_sorry = "sorry" in lean_code
+                has_pending_aristotle = any(
+                    aj.get("status") in ("SUBMITTED", "QUEUED", "IN_PROGRESS")
+                    for aj in job.aristotle_jobs
+                )
+                # Reject premature finalization: sorry + Aristotle still running + budget remaining
+                # But cap rejections at 5 to avoid infinite cost burn
+                reject_count = sum(1 for s in job.status_log if 'Rejected final_answer' in s)
+                if has_sorry and has_pending_aristotle and job.total_cost < MAX_COST_PER_QUERY * 0.8 and reject_count < 5:
+                    job.add_status("Rejected final_answer: proof has sorry and Aristotle is still running. Keep working!")
+                    job.messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call.id,
+                        "content": "REJECTED: Do not give up while Aristotle jobs are still running. Your proof has sorry — keep trying to fill it yourself, or wait for Aristotle results. Check Aristotle status with check_aristotle_status.",
+                    })
+                    job.save()
+                    continue
+
                 job.answer = fn_args.get("answer", "")
-                job.best_lean_code = fn_args.get("lean_code", job.best_lean_code)
+                job.best_lean_code = lean_code
                 job.best_code_verified = fn_args.get("verified", False)
-                job.best_code_sorry_free = "sorry" not in job.best_lean_code
+                job.best_code_sorry_free = not has_sorry
                 job.set_phase(JobPhase.COMPLETED)
                 job.finished_at = time.time()
                 job.add_status("Research complete!")
