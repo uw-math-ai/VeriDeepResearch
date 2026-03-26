@@ -868,3 +868,27 @@ sqrt(2) irrational, infinite primes, sum formula, AM-GM (2-var, 3-var), n²+n ev
 Lagrange's theorem (|H| divides |G|) verified via `Subgroup.card_subgroup_dvd_card`. 48 jobs, 39 verified (81%), $14.36 total.
 
 System is stable. No code changes — diminishing returns reached.
+
+## Iteration 26 — 2026-03-25 12:30 PDT
+
+HF test: "every convergent sequence is bounded" — verified on deployed HF Space.
+
+### Milestone: System complete for current capability tier
+
+After 26 iterations, VeriDeepResearch has reached a stable plateau:
+- **39+ verified proofs** across 10 mathematical domains
+- **81% success rate** on submitted problems
+- **<$0.40 average** per verified proof
+- **Public deployment** at vilin97-verideepresearch.hf.space
+
+**What works:** Standard undergraduate mathematics (Mathlib lookups, tactic proofs, weighted lemma combination, false statement detection, computational verification). Covers number theory, algebra, linear algebra, analysis, topology, combinatorics, set theory, category theory, probability, and order theory.
+
+**What doesn't work:** Hard competition mathematics (Putnam 2025: 0/12 fully proved). The LLM (Kimi K2.5) can reason about the math but can't write complex Lean proofs. This is a fundamental capability limitation, not an architectural one.
+
+**Next steps for future improvement:**
+1. Replace Kimi K2.5 with a model better at Lean (e.g., Claude, fine-tuned model)
+2. Use the extract_sorry_lemmas + Aristotle pipeline more aggressively for decomposition
+3. Add more Axle tools (simplify_theorems, normalize) for proof optimization
+4. Consider adding a "proof sketch" mode for hard problems (NL-only answer without Lean verification)
+
+The architecture is solid and ready for a model upgrade. All 25 improvements (from context overflow fix through alignment checks) will benefit any future model.
