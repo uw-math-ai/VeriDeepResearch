@@ -150,7 +150,7 @@ async def repair_lean_proofs(code: str) -> str:
                 json={
                     "content": code,
                     "environment": LEAN_ENVIRONMENT,
-                    "terminal_tactics": ["grind", "simp_all", "omega", "norm_num", "nlinarith", "aesop"],
+                    "terminal_tactics": ["grind", "simp_all", "omega", "norm_num", "nlinarith", "aesop", "exact?", "apply?"],
                     "timeout_seconds": 60,
                 },
             )

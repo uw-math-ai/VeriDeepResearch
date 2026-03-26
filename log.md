@@ -911,3 +911,26 @@ This is impactful because it catches easy sorries transparently, saving iteratio
 - `agent.py`: Added auto-repair in `_handle_tool_call` for `check_lean_code` — when code compiles with sorry, automatically try `repair_lean_proofs`, if all sorries filled, re-verify and use repaired code
 
 ### Stats: 50 jobs, 41 verified (82%), $14.39 total
+
+## Iteration 29 — 2026-03-26 09:00 PDT
+
+### Fix: Add exact?/apply? to auto-repair tactics
+
+Expanded auto-repair terminal tactics from `[grind, simp_all, omega, norm_num, nlinarith, aesop]` to also include `exact?` and `apply?`. These search Mathlib for matching lemmas and automatically apply them.
+
+**Tested on 3 hard sorries via Axle API:**
+- `Irrational (√2)` → `norm_num` found it
+- `Set.Infinite {p : ℕ | Nat.Prime p}` → `exact?` found `Nat.infinite_setOf_prime`
+- `IsPrincipalIdealRing ℤ` → `exact?` found `EuclideanDomain.to_principal_ideal_domain`
+
+All 3 filled automatically in <1 second! Previously these required the agent to manually search Mathlib.
+
+**Impact:** Any sorry that can be closed by a single Mathlib lemma application will now be filled automatically, without the agent needing to search. This effectively gives the auto-repair system access to Mathlib's entire library.
+
+### Test: R is a field
+Verified in 2 iterations (agent wrote it without sorry this time).
+
+### Code Changes
+- `tools.py`: Added `exact?` and `apply?` to repair_lean_proofs terminal_tactics
+
+### Stats: 51 jobs, 42 verified (82%), $14.40 total
