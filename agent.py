@@ -444,8 +444,8 @@ async def run_agent_job(job: JobState) -> None:
     if pending_aristotle and "sorry" in (job.best_lean_code or ""):
         job.add_status(f"Max iterations reached. Waiting for {len(pending_aristotle)} Aristotle job(s) to finish...")
         job.save()
-        # Wait for Aristotle jobs (poll every 30s, up to 2 hours)
-        for poll in range(240):
+        # Wait for Aristotle jobs (poll every 30s, up to 6 hours)
+        for poll in range(720):
             await asyncio.sleep(30)
             all_done = True
             for aj in pending_aristotle:
