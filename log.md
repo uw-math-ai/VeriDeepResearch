@@ -951,3 +951,26 @@ This is the 30th iteration. The system has been refined across:
 - 14 test/validation iterations
 - 52 total jobs tested
 - 43 verified proofs across 10+ mathematical domains
+
+## Iteration 31 — 2026-03-26 10:00 PDT
+
+### Critical fix: Wait for Aristotle + second wind iterations
+
+**Problem identified:** After the non-blocking Aristotle fix (iter 2), the agent burns through 500 iterations in 5-15 minutes and completes with sorry. But Aristotle takes 30-120 minutes. Only 1 out of ~25 Aristotle-submitted jobs ever received a completed result (B3, 37 min). Every other time, the agent finished before Aristotle did.
+
+The non-blocking fix improved proof THROUGHPUT but broke the Aristotle INTEGRATION.
+
+**Fix: Two-phase completion for sorry-containing results**
+
+When the agent hits max iterations with sorry AND has pending Aristotle jobs:
+
+1. **Wait phase:** Poll Aristotle every 30s for up to 2 hours (like the old behavior, but only after the agent has exhausted its own attempts)
+2. **If Aristotle returns sorry-free:** Verify with Axle and finalize
+3. **If Aristotle returns with sorry:** Feed the result back to the agent as a "second wind" — 50 more iterations to decompose, extract_sorry_lemmas, re-submit sub-lemmas, and try filling sorries
+
+The key insight: the agent should prove actively while Aristotle works (non-blocking), but when the agent runs out of ideas, it should WAIT for Aristotle instead of giving up.
+
+### Code Changes
+- `agent.py`: Added Aristotle wait after max iterations (when sorry + pending jobs), second wind loop that feeds Aristotle results back to the agent with 50 more iterations
+
+### Stats: 53 jobs, 44 verified (83%), $14.61 total

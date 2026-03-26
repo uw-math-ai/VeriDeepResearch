@@ -435,12 +435,154 @@ async def run_agent_job(job: JobState) -> None:
             })
             job.save()
 
-    # Max iterations reached
+    # Max iterations reached — but check if Aristotle jobs are still running
+    pending_aristotle = [
+        aj for aj in job.aristotle_jobs
+        if aj.get("status") not in ("COMPLETE", "COMPLETE_WITH_ERRORS", "FAILED", "CANCELED", "OUT_OF_BUDGET", None)
+        or aj.get("status") in ("SUBMITTED", "QUEUED", "IN_PROGRESS")
+    ]
+    if pending_aristotle and "sorry" in (job.best_lean_code or ""):
+        job.add_status(f"Max iterations reached. Waiting for {len(pending_aristotle)} Aristotle job(s) to finish...")
+        job.save()
+        # Wait for Aristotle jobs (poll every 30s, up to 2 hours)
+        for poll in range(240):
+            await asyncio.sleep(30)
+            all_done = True
+            for aj in pending_aristotle:
+                pid = aj.get("project_id", "")
+                try:
+                    info = await check_aristotle_status(pid)
+                    status = info.get("status", "UNKNOWN")
+                    pct = info.get("percent_complete")
+                    aj["status"] = status
+                    aj["percent_complete"] = pct
+                    elapsed_min = (poll + 1) * 30 // 60
+                    pct_str = f" ({pct}%)" if pct is not None else ""
+                    if poll % 4 == 0:  # Log every 2 min
+                        job.add_status(f"Aristotle [{pid[:8]}]: {status}{pct_str} — {elapsed_min}m")
+                    if status not in TERMINAL_STATUSES:
+                        all_done = False
+                    elif status in ("COMPLETE", "COMPLETE_WITH_ERRORS"):
+                        # Download and try to use the result
+                        job.add_status(f"Aristotle [{pid[:8]}] completed! Downloading...")
+                        ari_code = await get_aristotle_result(pid)
+                        job.add_log(f"## Aristotle result [{pid[:8]}]\n```\n{ari_code[:5000]}\n```")
+                        # Check if the result is sorry-free
+                        if ari_code and "sorry" not in ari_code:
+                            # Verify with Axle
+                            check_result = await check_lean_code(ari_code)
+                            try:
+                                parsed = json.loads(check_result)
+                                if parsed.get("okay"):
+                                    has_theorem = any(
+                                        line.strip().startswith(("theorem ", "lemma "))
+                                        for line in ari_code.split("\n")
+                                    )
+                                    if has_theorem:
+                                        job.best_lean_code = ari_code
+                                        job.best_code_verified = True
+                                        job.best_code_sorry_free = True
+                                        job.add_status(f"Aristotle proof verified! Sorry-free!")
+                                        # Generate explanation
+                                        job.answer = _generate_fallback_explanation(job.question, ari_code)
+                                        job.set_phase(JobPhase.COMPLETED)
+                                        job.finished_at = time.time()
+                                        job.add_status("Research complete (via Aristotle)!")
+                                        job.save()
+                                        return
+                            except json.JSONDecodeError:
+                                pass
+                        # Aristotle returned sorry — give agent a "second wind"
+                        if ari_code:
+                            job.best_lean_code = ari_code
+                            job.add_status(f"Aristotle returned code with sorry. Giving agent more iterations to decompose...")
+                            job.add_log(f"## Second wind: Aristotle returned sorry-containing code")
+                            # Feed Aristotle's output into the conversation
+                            job.messages.append({
+                                "role": "user",
+                                "content": (
+                                    f"Aristotle returned this Lean code (has sorry):\n```lean4\n{ari_code[:4000]}\n```\n\n"
+                                    "Use extract_sorry_lemmas to decompose the remaining sorries, then submit each to Aristotle. "
+                                    "Also try filling the sorries yourself with check_lean_code."
+                                ),
+                            })
+                            # Grant 50 more iterations
+                            job.save()
+                            second_wind_iterations = min(50, MAX_AGENT_ITERATIONS - job.iteration)
+                            if second_wind_iterations > 0:
+                                job.add_status(f"Second wind: {second_wind_iterations} more iterations granted.")
+                                # Re-enter the main loop (recursive call with iteration limit)
+                                old_max = MAX_AGENT_ITERATIONS
+                                for sw_iter in range(second_wind_iterations):
+                                    job.iteration += 1
+                                    if job.total_cost >= MAX_COST_PER_QUERY:
+                                        break
+                                    messages = _compress_messages(job.messages)
+                                    try:
+                                        response = await client.chat.completions.create(
+                                            model=KIMI_MODEL, messages=messages,
+                                            tools=TOOL_DEFINITIONS, temperature=0.6, max_tokens=16384,
+                                        )
+                                    except Exception:
+                                        break
+                                    if response.usage:
+                                        inp = response.usage.prompt_tokens or 0
+                                        out = response.usage.completion_tokens or 0
+                                        job.total_input_tokens += inp
+                                        job.total_output_tokens += out
+                                        job.total_cost += inp * INPUT_COST_PER_TOKEN + out * OUTPUT_COST_PER_TOKEN
+                                    choice = response.choices[0]
+                                    assistant_msg = choice.message
+                                    msg_dict = {"role": "assistant", "content": assistant_msg.content or ""}
+                                    if assistant_msg.tool_calls:
+                                        msg_dict["tool_calls"] = [
+                                            {"id": tc.id, "type": "function",
+                                             "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
+                                            for tc in assistant_msg.tool_calls
+                                        ]
+                                    job.messages.append(msg_dict)
+                                    if not assistant_msg.tool_calls:
+                                        job.save()
+                                        continue
+                                    for tool_call in assistant_msg.tool_calls:
+                                        fn_name = tool_call.function.name
+                                        try:
+                                            fn_args = json.loads(tool_call.function.arguments)
+                                        except json.JSONDecodeError:
+                                            fn_args = {}
+                                        job.tool_counts[fn_name] = job.tool_counts.get(fn_name, 0) + 1
+                                        if fn_name == "final_answer":
+                                            job.answer = fn_args.get("answer", "")
+                                            job.best_lean_code = fn_args.get("lean_code", job.best_lean_code)
+                                            job.best_code_verified = fn_args.get("verified", False)
+                                            job.best_code_sorry_free = "sorry" not in job.best_lean_code
+                                            job.set_phase(JobPhase.COMPLETED)
+                                            job.finished_at = time.time()
+                                            job.add_status("Research complete (second wind)!")
+                                            job.save()
+                                            return
+                                        result = await _handle_tool_call(fn_name, fn_args, job)
+                                        if fn_name == "check_lean_code":
+                                            auto = await _maybe_auto_finalize(job, fn_args, result, client)
+                                            if auto:
+                                                return
+                                            _track_best_code(job, fn_args, result)
+                                        job.messages.append({
+                                            "role": "tool", "tool_call_id": tool_call.id, "content": result,
+                                        })
+                                        job.save()
+                except Exception as e:
+                    job.add_log(f"## Aristotle poll error: {e}")
+            job.save()
+            if all_done:
+                break
+
+    # Finalize
     if not job.answer and job.best_lean_code:
         job.answer = _generate_fallback_explanation(job.question, job.best_lean_code)
     job.set_phase(JobPhase.COMPLETED if job.best_lean_code else JobPhase.FAILED)
     job.finished_at = time.time()
-    job.add_status(f"Max iterations reached. Cost: ${job.total_cost:.4f}")
+    job.add_status(f"Job complete. Cost: ${job.total_cost:.4f}")
     job.save()
 
 
