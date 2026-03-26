@@ -934,3 +934,20 @@ Verified in 2 iterations (agent wrote it without sorry this time).
 - `tools.py`: Added `exact?` and `apply?` to repair_lean_proofs terminal_tactics
 
 ### Stats: 51 jobs, 42 verified (82%), $14.40 total
+
+## Iteration 30 — 2026-03-26 09:30 PDT
+
+### Test: R[X] is a PID over a field
+
+Verified in 12 iterations. Agent found `EuclideanDomain.to_principal_ideal_domain` and proved R[X] is both a PID and integral domain. Auto-repair tried but couldn't close the sorry (too complex for automation) — agent fixed it manually.
+
+The auto-repair with exact?/apply? works best for top-level sorries (single-lemma closures). For sorries inside complex proof contexts, the agent still needs to work manually or use Aristotle.
+
+### Stats: 52 jobs, 43 verified (83%), $14.44 total
+
+### 30 iterations milestone
+This is the 30th iteration. The system has been refined across:
+- 16 code improvements (context, Aristotle, self-review, decomposition, repair, UX)
+- 14 test/validation iterations
+- 52 total jobs tested
+- 43 verified proofs across 10+ mathematical domains
