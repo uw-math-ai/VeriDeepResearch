@@ -892,3 +892,7 @@ After 26 iterations, VeriDeepResearch has reached a stable plateau:
 4. Consider adding a "proof sketch" mode for hard problems (NL-only answer without Lean verification)
 
 The architecture is solid and ready for a model upgrade. All 25 improvements (from context overflow fix through alignment checks) will benefit any future model.
+
+## Iteration 27 — 2026-03-26 08:00 PDT
+
+ℚ is countable verified via `infer_instance`. 49 jobs, 40 verified (82%), $14.38 total. System stable.
