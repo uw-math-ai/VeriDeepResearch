@@ -896,3 +896,18 @@ The architecture is solid and ready for a model upgrade. All 25 improvements (fr
 ## Iteration 27 — 2026-03-26 08:00 PDT
 
 ℚ is countable verified via `infer_instance`. 49 jobs, 40 verified (82%), $14.38 total. System stable.
+
+## Iteration 28 — 2026-03-26 08:30 PDT
+
+### Fix: Automatic proof repair on sorry-containing code
+
+When `check_lean_code` returns okay=true with sorry, the system now AUTOMATICALLY calls `repair_lean_proofs` to try filling sorries with automation tactics (grind, simp, omega, etc.). If all sorries are filled, the repaired code replaces the original — the agent never even sees the sorry.
+
+**Test result:** "Product of consecutive integers is even" — agent wrote 2 theorems with `sorry`, auto-repair filled BOTH with `grind`. Agent saw "Auto-repair filled 2 sorry(s)! Verifying repaired code..." and got verified code back. Zero manual effort.
+
+This is impactful because it catches easy sorries transparently, saving iterations on every hard problem where the agent writes partially-correct code.
+
+### Code Changes
+- `agent.py`: Added auto-repair in `_handle_tool_call` for `check_lean_code` — when code compiles with sorry, automatically try `repair_lean_proofs`, if all sorries filled, re-verify and use repaired code
+
+### Stats: 50 jobs, 41 verified (82%), $14.39 total

@@ -474,14 +474,38 @@ async def _handle_tool_call(fn_name: str, fn_args: dict, job: JobState) -> str:
 
     if fn_name == "check_lean_code":
         job.add_status("Verifying Lean code with Axle...")
-        result = await check_lean_code(fn_args.get("code", ""))
+        code = fn_args.get("code", "")
+        result = await check_lean_code(code)
         try:
             parsed = json.loads(result)
             if parsed.get("okay"):
-                code = fn_args.get("code", "")
                 has_sorry = "sorry" in code
                 if has_sorry:
-                    job.add_status("Lean code compiles but contains `sorry` — continuing...")
+                    # Auto-repair: try to fill sorries with automation tactics
+                    repair_result = await repair_lean_proofs(code)
+                    try:
+                        repair_parsed = json.loads(repair_result)
+                        repairs = repair_parsed.get("repairs_applied", 0)
+                        if repairs > 0 and not repair_parsed.get("still_has_sorry", True):
+                            # All sorries filled! Replace the code in fn_args and result
+                            repaired_code = repair_parsed.get("repaired_code", code)
+                            fn_args["code"] = repaired_code
+                            job.add_status(f"Auto-repair filled {repairs} sorry(s)! Verifying repaired code...")
+                            job.add_log(f"## Auto-repair: {repairs} sorry(s) filled by automation")
+                            # Re-verify the repaired code
+                            result = await check_lean_code(repaired_code)
+                            parsed = json.loads(result)
+                            if parsed.get("okay") and "sorry" not in repaired_code:
+                                job.add_status("Repaired code verified successfully!")
+                            else:
+                                job.add_status("Repaired code has issues — using original.")
+                                fn_args["code"] = code  # revert
+                        elif repairs > 0:
+                            job.add_status(f"Auto-repair filled {repairs} sorry(s), {repair_parsed.get('still_has_sorry', True) and 'some remain' or 'done'}.")
+                        else:
+                            job.add_status("Lean code compiles but contains `sorry` — continuing...")
+                    except (json.JSONDecodeError, Exception):
+                        job.add_status("Lean code compiles but contains `sorry` — continuing...")
                 else:
                     job.add_status("Lean code verified successfully!")
             else:
