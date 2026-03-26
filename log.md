@@ -862,3 +862,9 @@ The system has reached a stable equilibrium:
 
 ### Complete list of verified proofs (38)
 sqrt(2) irrational, infinite primes, sum formula, AM-GM (2-var, 3-var), n²+n even, n³-n div 6, n⁵-n div 30, Fermat's Little Theorem, Cauchy-Schwarz, false statement (|x| not differentiable), odd² is odd, d/dx(sin·cos)=cos(2x), injective composition, finite domain→field, (Z/pZ)* cyclic, C(2p,p)≡2 mod p, group of order 4 is abelian, det(MN)=det(M)·det(N), compact image, GCD(12345,67890)=15, dvd antisymmetry, subgroup of abelian is normal, Euclid's lemma, ∅⊆S, binomial sum theorem, π irrational, iso→mono∧epi, P(∅)=0, meet associativity, 104729 is prime, Z is PID, countable union, + Putnam partial results (A1-A6, B1-B6)
+
+## Iteration 25 — 2026-03-25 12:00 PDT
+
+Lagrange's theorem (|H| divides |G|) verified via `Subgroup.card_subgroup_dvd_card`. 48 jobs, 39 verified (81%), $14.36 total.
+
+System is stable. No code changes — diminishing returns reached.
