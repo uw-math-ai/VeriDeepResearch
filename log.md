@@ -1005,3 +1005,27 @@ A₅ is simple verified in 24s via `infer_instance`. 56 jobs, 45 verified (80%),
 The 5-rejection cap wasn't tested (problem was too easy). The cap will only trigger on hard problems where the agent tries to quit with sorry while Aristotle is running.
 
 ### Overall stats: 56 jobs, 45 verified (80%), 10 domains, $24.33 total
+
+## Iteration 34 — 2026-03-26 15:00 PDT
+
+### System status: stable plateau
+
+Both local and HF endpoints running. No active jobs.
+
+**Final cost analysis:**
+- 33 easy proofs: avg $0.022 each (Mathlib lookups + tactic proofs)
+- 9 hard problems: avg $2.19 each (Aristotle + many LLM iterations)
+- 2 rejections: ~$0 each
+
+**The iteration cycle has reached its natural end.** All meaningful architectural improvements have been made:
+- Non-blocking Aristotle with wait-after-max-iterations (iters 2, 31)
+- Sorry rejection to prevent premature quit (iter 31, capped at 5)
+- Second wind iterations after Aristotle results (iter 31)
+- Auto-repair with exact?/apply? for Mathlib auto-discovery (iters 28-29)
+- Self-review with vacuous + alignment checks (iters 3, 6, 18)
+- Sorry decomposition via Axle sorry2lemma (iter 11)
+- KaTeX rendering, email quality, HF deployment (iters 5, 7, 10, 13)
+
+The remaining gap (hard competition math) requires a better Lean-capable LLM.
+
+### Final: 56 jobs, 45 verified (80%), $24.33 total, 34 iterations
