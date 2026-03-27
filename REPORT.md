@@ -54,18 +54,18 @@ Status page with KaTeX rendering
 
 | Metric | Value |
 |--------|-------|
-| Total jobs tested | 52 |
-| Verified (sorry-free) | 43 (83%) |
-| Partial (sorry) | 7 (13%) |
+| Total jobs tested | 57 |
+| Verified (sorry-free) | 46 (81%) |
+| Partial (sorry) | 9 (16%) |
 | Rejected (non-math) | 2 (4%) |
-| Total cost | $14.44 |
-| Avg cost per verified proof | $0.34 |
+| Total cost | $24.34 |
+| Avg cost per verified proof | $0.02 (easy) / $2.19 (hard) |
 | Mathematical domains | 10+ |
-| Development iterations | 30 |
+| Development iterations | 37 |
 
 ### Verified Proofs by Domain
 
-**Number Theory:** sqrt(2) irrational, infinite primes, Fermat's Little Theorem, n³-n div 6, n⁵-n div 30, GCD(12345,67890)=15, C(2p,p)≡2 mod p (Lucas's theorem), dvd antisymmetry, Euclid's lemma, 104729 is prime, ℚ is countable
+**Number Theory:** sqrt(2) irrational, π irrational, infinite primes, Fermat's Little Theorem, n³-n div 6, n⁵-n div 30, GCD(12345,67890)=15, C(2p,p)≡2 mod p (Lucas's theorem), dvd antisymmetry, Euclid's lemma, 104729 is prime, ℚ is countable
 
 **Algebra:** AM-GM (2-var via (√x-√y)²≥0, 3-var via weighted Mathlib means), group of order 4 is abelian (p²-group), (Z/pZ)* is cyclic, finite integral domain → field, Z is PID, R[X] is PID, Lagrange's theorem, odd² is odd, subgroup of abelian is normal, ℝ is a field
 
@@ -154,6 +154,14 @@ The system was developed through 30 iterations of test → diagnose → improve 
 **Iteration 10: KaTeX rendering.** Status page showed raw LaTeX (`$\frac{1}{\pi}$`). **Fix:** Added KaTeX v0.16.9 + lightweight markdown renderer for real-time math rendering on the status page.
 
 **Iteration 13: Landing page.** Updated examples to showcase 6 proven-to-work problems across difficulty levels. Added tech stack description.
+
+### Aristotle Long-Horizon Integration (Iterations 31-32)
+
+**Iteration 31: Wait for Aristotle after max iterations.** Previously, the agent finished in 5-15 minutes while Aristotle took 30-120 minutes — only 1/25 Aristotle jobs ever completed before the agent quit. **Fix:** When the agent hits max iterations with sorry AND Aristotle jobs are pending, the worker waits up to 6 hours for Aristotle to complete. If Aristotle returns sorry-containing code, the agent gets 50 "second wind" iterations to decompose and re-submit.
+
+**Iteration 31: Reject premature finalization.** The agent would call `final_answer` with sorry-containing code while Aristotle was still running. **Fix:** Reject `final_answer` with sorry when Aristotle jobs are pending (capped at 5 rejections to avoid cost burn — validated by B2 test where 24 uncapped rejections cost $8+).
+
+**Iteration 28-29: Auto-repair with Mathlib discovery.** Automatic `repair_proofs` call on every sorry-containing compilation. Includes `exact?`/`apply?` to search all of Mathlib. Test: x³+y³+z³=3xyz proved in 12 seconds, zero agent iterations — auto-repair filled the sorry with `grind`.
 
 ### Deployment (Iteration 5)
 
