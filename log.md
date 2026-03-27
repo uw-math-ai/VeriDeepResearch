@@ -1049,3 +1049,7 @@ The agent wrote the theorem with sorry at iteration 0. Auto-repair filled it wit
 This validates the auto-repair pipeline: write skeleton → auto-fill → verify → done. For problems closable by automation tactics, the system is essentially zero-iteration.
 
 ### Stats: 57 jobs, 46 verified (81%), $24.34 total
+
+## Iteration 37 — 2026-03-27 10:00 PDT
+
+Maintenance. Both endpoints running. 57 jobs, 46 verified (80%), $24.34. No changes.
