@@ -1033,3 +1033,19 @@ The remaining gap (hard competition math) requires a better Lean-capable LLM.
 ## Iteration 35 — 2026-03-27 08:00 PDT
 
 Maintenance check. Both endpoints running, all recent emails delivered. No changes needed. 45/56 verified (80%), $24.33 total.
+
+## Iteration 36 — 2026-03-27 09:00 PDT
+
+### Auto-repair success: x³+y³+z³ = 3xyz
+
+Tested the "middle ground" — a problem that needs an actual tactic proof (not just Mathlib lookup):
+
+| Problem | Time | Cost | Status | Method |
+|---------|------|------|--------|--------|
+| x+y+z=0 → x³+y³+z³=3xyz | 12s | $0.008 | VERIFIED | **Auto-repair**: sorry → `grind` |
+
+The agent wrote the theorem with sorry at iteration 0. Auto-repair filled it with `grind` on the FIRST check_lean_code call. The agent never iterated — auto-repair solved it before the agent even saw the sorry.
+
+This validates the auto-repair pipeline: write skeleton → auto-fill → verify → done. For problems closable by automation tactics, the system is essentially zero-iteration.
+
+### Stats: 57 jobs, 46 verified (81%), $24.34 total
